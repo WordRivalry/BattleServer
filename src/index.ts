@@ -38,16 +38,6 @@ const isValidApiKey = (apiKey: string | undefined): boolean => {
 // Initialize a WebSocket server on top of the HTTP server
 const wss = new WebSocketServer({ noServer: true });
 
-// Heartbeat Interval
-// setInterval(() => {
-//     const currentTime = Date.now();
-//     wss.clients.forEach((client) => {
-//         if (client.readyState === WebSocket.OPEN) {
-//             client.send(JSON.stringify({ type: 'heartbeat', time: currentTime }));
-//         }
-//     });
-// }, 10000); // Every 10 seconds
-
 // Instantiate services used for matchmaking and game logic
 const queueService = new QueueService();
 const gameSessionManager = new GameSessionManager();
@@ -193,8 +183,8 @@ wss.on('connection', (ws) => {
     }
 });
 
-// Define the port number and start the server
-const PORT = 3000;
+// Define the port number from the environment or use 8080 as a fallback
+const PORT = process.env.PORT || 8080;
 server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
 
 function shutdown() {
