@@ -3,7 +3,8 @@ import express from 'express';
 import {Server as WebSocketServer, WebSocket} from 'ws'; // Correct import from 'ws'
 import QueueService from './game/QueueService';
 import MatchmakingService from './game/MatchmakingService';
-import {GameSessionManager} from "./game/gameSession/GameSessionManager";
+import {GameSessionManager} from "./game/GameSessionManager";
+import {ExperimentalPlayerLifecycleService, PlayerState} from "./game/ExperimentalPlayerService";
 
 // Initialize the Express application
 const app = express();
@@ -38,10 +39,13 @@ const isValidApiKey = (apiKey: string | undefined): boolean => {
 // Initialize a WebSocket server on top of the HTTP server
 const wss = new WebSocketServer({ noServer: true });
 
-// Instantiate services used for matchmaking and game logic
-const queueService = new QueueService();
+// Instantiate services
+const playerService = new ExperimentalPlayerLifecycleService();
 const gameSessionManager = new GameSessionManager();
-const matchmakingService = new MatchmakingService(queueService, gameSessionManager);
+const matchmakingService = new MatchmakingService(
+    gameSessionManager,
+    playerService
+);
 
 // Define the root endpoint for simple HTTP GET requests
 app.get('/', (req, res) => {
@@ -60,24 +64,30 @@ wss.on('connection', (ws) => {
         try {
             const action = JSON.parse(message.toString());
 
-            switch (action.type) {
-                case 'handshake':
-                    handleHandshake(action, ws);
-                    break;
-                case 'findMatch':
-                    handleFindMatch();
-                    break;
-                case 'stopFindMatch':
-                    handleStopFindMatch();
-                    break;
-                case 'ackStartGame':
-                    handlePlayerAckStartGame();
-                    break;
-                case 'scoreUpdate':
-                    handleScoreUpdate(action);
-                    break;
-                default:
-                    console.log(`Unknown action type: ${action.type}`);
+            if (action.type === 'handshake') {
+                handleHandshake(action, ws);
+            } else if (playerUUID && playerUsername) {
+                switch (action.type) {
+                    case 'findMatch':
+                        console.log(`Player ${playerUUID} is searching for a match`);
+                        playerService.updatePlayerState(playerUUID, PlayerState.InQueue);
+                        break;
+                    case 'stopFindMatch':
+                        console.log(`Player ${playerUUID} stopped searching for a match`);
+                        playerService.updatePlayerState(playerUUID, PlayerState.Idle);
+                        break;
+                    case 'ackStartGame':
+                        console.log(`Player ${playerUUID} acknowledged game start`);
+                        playerService.updatePlayerState(playerUUID, PlayerState.IsReady);
+                        break;
+                    case 'scoreUpdate':
+                        const { wordPath } = action;
+                        console.log(`Score update from ${playerUUID}:`, action);
+                        gameSessionManager.getGameSession(playerUUID)?.updateScore(playerUUID, wordPath);
+                        break;
+                    default:
+                        console.log(`Unknown action type: ${action.type}`);
+                }
             }
         } catch (error) {
             console.error('Failed to parse JSON:', error);
@@ -89,10 +99,7 @@ wss.on('connection', (ws) => {
     ws.on('close', () => {
         if (playerUUID) {
             console.log(`Player disconnected: ${playerUUID}`);
-            gameSessionManager.handlePlayerDisconnection(playerUUID);
-            if (queueService.isPlayerInQueue(playerUUID)) {
-                queueService.removePlayer(playerUUID);
-            }
+            playerService.handleDisconnection(playerUUID);
         }
     });
 
@@ -103,27 +110,11 @@ wss.on('connection', (ws) => {
     ws.on('pong', () => {
         console.log(`Pong received from ${playerUUID}`);
         // Here, you can update some kind of "last seen" timestamp for the client
+
     });
 
-
     function handleHandshake(action: any, ws: WebSocket) {
-        const { uuid, username, reconnecting } = action;
-
-        // Client-Side Handshake Message for New Connections
-        // {
-        //     "type": "handshake",
-        //     "username": "player-username",
-        //     "uuid": "unique-player-uuid",
-        //     "reconnecting": false
-        // }
-
-        // Client-Side Handshake Message for Reconnections
-        // {
-        //     "type": "handshake",
-        //     "username": "player-username",
-        //     "uuid": "unique-player-uuid",
-        //     "reconnecting": true
-        // }
+        const { uuid, username, reconnecting: isReconnecting } = action;
 
         playerUUID = uuid;
         console.log(`Player UUID set: ${playerUUID}`);
@@ -131,54 +122,12 @@ wss.on('connection', (ws) => {
         playerUsername = username;
         console.log(`Player username set: ${username}`);
 
-        if (reconnecting) {
+        if (isReconnecting) {
             console.log(`Reconnection attempt by player: ${uuid}`);
-            gameSessionManager.handleReconnection(uuid, ws);
+            playerService.handleReconnection(uuid, ws);
         } else {
-            // Handle new connection logic here
             console.log('New player connected...');
-        }
-    }
-
-    function handleFindMatch() {
-        // Ensure the UUID is set before adding to the matchmaking queue
-        if (playerUUID && playerUsername) {
-            queueService.addPlayer({uuid: playerUUID, username: playerUsername, socket: ws});
-            console.log(`Player ${playerUUID} looking for a match`);
-            matchmakingService.findMatches(); // Attempt to find a match immediately
-        } else {
-            console.warn('Player UUID or username not set. Cannot find match.');
-        }
-    }
-
-    function handleStopFindMatch() {
-        if (playerUUID) {
-            queueService.removePlayer(playerUUID);
-            console.log(`Player ${playerUUID} stopped searching for a match`);
-        } else {
-            console.warn('Player UUID not set. Cannot stop search.');
-        }
-    }
-
-    function handleScoreUpdate(action: any) {
-        const { wordPath, score } = action; // Assume action includes UUID and score
-        // Logic to update and broadcast score
-        console.log(`New word found from ${playerUsername}: ${wordPath}`);
-        console.log(`New score for ${playerUsername}: ${score}`);
-
-        if (!playerUUID || !playerUsername) {
-            console.warn('Player UUID or username not set. Cannot update score.');
-            return;
-        }
-
-        // Broadcast the score update
-        gameSessionManager.getGameSession(playerUUID)?.updateScore(playerUUID, wordPath, score);
-    }
-
-    function handlePlayerAckStartGame() {
-        if (playerUUID && playerUsername) {
-            console.log(`Player ${playerUUID} acknowledged game start`);
-            gameSessionManager.getGameSession(playerUUID)?.playerAckToStart(playerUUID);
+            playerService.addPlayer(uuid, username, ws);
         }
     }
 });

@@ -1,12 +1,43 @@
 import QueueService from './QueueService';
-import {GameSessionManager} from "./gameSession/GameSessionManager";
+import {GameSessionManager} from "./GameSessionManager";
+import {
+    ExperimentalPlayerLifecycleService,
+    PlayerInfo,
+    PlayerLifecycleEvents,
+    PlayerState
+} from "./ExperimentalPlayerService";
 class MatchmakingService {
     private queueService: QueueService;
-    private gameSessionManager: GameSessionManager;
+    private gameSessionManager: GameSessionManager; // Ref
+    private playerService: ExperimentalPlayerLifecycleService; // Ref
 
-    constructor(queueService: QueueService, gameSessionManager: GameSessionManager) {
-        this.queueService = queueService;
+    constructor(
+        gameSessionManager: GameSessionManager,
+        playerLifecycleService: ExperimentalPlayerLifecycleService
+    ) {
+        this.queueService = new QueueService();
         this.gameSessionManager = gameSessionManager;
+        this.playerService = playerLifecycleService;
+
+        this.setupEventListeners();
+    }
+
+    private setupEventListeners() {
+        this.playerService.events.on(PlayerLifecycleEvents.PLAYER_STATE_CHANGED(PlayerState.InQueue), (player: PlayerInfo) => {
+            this.queueService.addPlayer(player);
+            this.findMatches();
+        });
+
+        this.playerService.events.on(PlayerLifecycleEvents.PLAYER_DISCONNECTED, (playerUUID: string) => {
+            this.handlePlayerDisconnection(playerUUID);
+        });
+    }
+
+    private handlePlayerDisconnection(playerUUID: string) {
+        if (this.queueService.isPlayerInQueue(playerUUID)) {
+            this.queueService.removePlayer(playerUUID);
+            console.log(`Removed disconnected player ${playerUUID} from queue.`);
+        }
     }
 
     public findMatches() {
@@ -21,7 +52,7 @@ class MatchmakingService {
             this.queueService.removePlayer(player2.uuid);
 
             // Pass matched players to RankGameService
-            this.gameSessionManager.startNewGame(player1, player2, player1.uuid, player2.uuid);
+            this.gameSessionManager.startNewGame([player1, player2]);
         }
     }
 }

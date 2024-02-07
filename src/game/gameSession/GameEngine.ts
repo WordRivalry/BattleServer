@@ -56,7 +56,8 @@ export class GameEngine {
         wordScoreCalculator: (word: LetterTile[]) => number;
         gridGenerator: () => LetterGrid;
         checkGameOver: (rounds: RoundData[]) => boolean;
-        winnerDeterminator: (rounds: RoundData[]) => Winner;
+        gameWinnerDeterminator: (rounds: RoundData[]) => Winner;
+        roundWinnerDeterminator?: (round: RoundData) => Winner;
     };
 
     constructor() {
@@ -68,7 +69,8 @@ export class GameEngine {
             wordScoreCalculator: this.defaultWordScoreCalculator,
             gridGenerator: this.defaultGridGenerator,
             checkGameOver: this.defaultCheckGameOver,
-            winnerDeterminator: this.defaultWinnerDeterminator,
+            gameWinnerDeterminator: this.defaultGameWinnerDeterminator,
+            roundWinnerDeterminator: this.defaultRoundWinnerDeterminator,
         };
 
         this.setState('preGame')
@@ -118,7 +120,7 @@ export class GameEngine {
     }
 
     public setWinnerDeterminator(determinator: (rounds: RoundData[]) => 'player1' | 'player2' | 'tie'): void {
-        this.config.winnerDeterminator = determinator;
+        this.config.gameWinnerDeterminator = determinator;
     }
 
     public startGame(): void {
@@ -183,7 +185,7 @@ export class GameEngine {
                 if (roundData) this.delegate?.onRoundEnd(roundData);
                 break;
             case 'ended':
-                const winner = this.defaultWinnerDeterminator();
+                const winner = this.config.gameWinnerDeterminator(this.rounds);
                 this.delegate?.onGameEnd(winner);
                 break;
         }
@@ -220,7 +222,7 @@ export class GameEngine {
             roundNumber: this.currentRoundIndex + 1,
             playerData: new Map(),
             winner: undefined,
-            grid: this.defaultGridGenerator(),
+            grid: this.config.gridGenerator(),
             startTime: Date.now(),
             duration: duration,
         };
@@ -248,7 +250,7 @@ export class GameEngine {
     }
 
 
-     defaultWinnerDeterminator(): Winner {
+     defaultGameWinnerDeterminator(): Winner {
         const totalScores = new Map<PlayerUUID, number>();
 
         this.rounds.forEach((roundData) => {
@@ -259,6 +261,28 @@ export class GameEngine {
                     totalScores.set(uuid, totalScores.get(uuid)! + data.score);
                 }
             });
+        });
+
+        let highestScore = -1;
+        let potentialWinners: PlayerUUID[] = [];
+
+        totalScores.forEach((score, uuid) => {
+            if (score > highestScore) {
+                highestScore = score;
+                potentialWinners = [uuid];
+            } else if (score === highestScore) {
+                potentialWinners.push(uuid);
+            }
+        });
+
+        return potentialWinners.length === 1 ? potentialWinners[0] : 'tie';
+    }
+
+    defaultRoundWinnerDeterminator(round: RoundData): Winner {
+        const totalScores = new Map<PlayerUUID, number>();
+
+        round.playerData.forEach((data, uuid) => {
+            totalScores.set(uuid, data.score);
         });
 
         let highestScore = -1;
@@ -404,7 +428,6 @@ export class GameEngine {
                 console.error(`Invalid path coordinates: (${row}, ${col})`);
             }
         }
-
         return letterTiles;
     }
 

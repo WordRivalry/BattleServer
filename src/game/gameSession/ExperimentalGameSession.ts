@@ -1,21 +1,18 @@
-import {Player} from "../QueueService";
 import {WebSocket} from 'ws';
 import {GameEngine, GameEngineDelegate, Path, PlayerUUID, RoundData, Winner} from "./GameEngine";
 import {clearTimeout} from "timers";
-import {PlayerService} from "./PlayerService";
 import {MessagingService} from "./MessagingService";
+import {PlayerLifecycleDelegate, PlayerLifecycleService} from "../PlayerLifecycleService";
 
-export class ExperimentalGameSession implements GameEngineDelegate {
-    private readonly playerService: PlayerService = new PlayerService();
+export class ExperimentalGameSession implements GameEngineDelegate, PlayerLifecycleDelegate {
     private readonly messagingService: MessagingService = new MessagingService();
     private readonly gameEngine: GameEngine = new GameEngine();
-
+    private playerLifecycleService: PlayerLifecycleService = new PlayerLifecycleService(this);
     private readonly reconnectionTimeouts: Map<string, NodeJS.Timeout> = new Map(); // Attributes to track reconnection timeouts
-    private readonly playerReadyStates: Map<string, boolean> = new Map(); // Attributes to track player readiness
     private gameSessionState: 'sessionCreated' | 'exchangeInfo' | 'inGame' | 'ended' = 'sessionCreated';
 
     get playersUUIDs(): string[] {
-        return this.playerService.getAllPlayerUUIDs();
+        return this.playerLifecycleService.getAllPlayerUUIDs();
     }
 
     get isSessionEnded() {
@@ -25,8 +22,7 @@ export class ExperimentalGameSession implements GameEngineDelegate {
     constructor(players: Player[]) {
         // Initialize the game session with the provided players
         for (const player of players) {
-            this.playerService.addPlayer(player);
-            this.playerReadyStates.set(player.uuid, false);
+            this.playerLifecycleService.addPlayer(player);
             this.messagingService.registerPlayerSocket(player.uuid, player.socket);
         }
 
@@ -53,10 +49,10 @@ export class ExperimentalGameSession implements GameEngineDelegate {
         this.gameSessionState = 'exchangeInfo';
 
         // Directly get all usernames
-        const allUsernames = this.playerService.getAllUsernames();
+        const allUsernames = this.playerLifecycleService.getAllUsernames();
 
         // Iterate over all players
-        this.playerService.forEachPlayer(currentPlayer => {
+        this.playerLifecycleService.forEachPlayer(currentPlayer => {
             // Exclude the current player's username from the list of opponents
             const opponentsUsernames = allUsernames.filter(username => username !== currentPlayer.username);
 
@@ -71,17 +67,12 @@ export class ExperimentalGameSession implements GameEngineDelegate {
 
     public playerAckToStart(playerUuid: string): void {
         // Mark the player as ready. Here, you'd track readiness in a map or similar structure.
-        this.playerReadyStates.set(playerUuid, true);
+        this.playerLifecycleService.setPlayerReady(playerUuid, true);
 
         // Check if all players are ready
-        if (this.areAllPlayersReady()) {
+        if (this.playerLifecycleService.isAllPlayersReady()) {
             this.startCountdown();
         }
-    }
-
-    private areAllPlayersReady(): boolean {
-        // Check readiness for all players
-        return Array.from(this.playerReadyStates.values()).every(isReady => isReady);
     }
 
     private startCountdown() {
@@ -109,65 +100,6 @@ export class ExperimentalGameSession implements GameEngineDelegate {
     }
 
     //////////////////////////////////////////////////
-    //        Disconnection and reconnection        //
-    //////////////////////////////////////////////////
-
-    public handlePlayerDisconnection(playerUuid: string) {
-        // Set a timeout for player reconnection
-        const reconnectionTimeout = setTimeout(() => {
-            // Handle the case where the player does not reconnect in time
-            console.log(`Player ${playerUuid} did not reconnect in time.`);
-            this.endGameDueToDisconnection(playerUuid);
-        }, 10000); // Wait for 10 seconds
-
-        // Store the timeout so it can be cleared upon successful reconnection
-        this.reconnectionTimeouts.set(playerUuid, reconnectionTimeout);
-    }
-
-    private endGameDueToDisconnection(playerUuid: string) {
-        // End the game prematurely due to a player not reconnecting in time
-        // You might decide to declare the other player as the winner or handle it differently
-
-        console.log(`Game ended due to player ${playerUuid} not reconnecting in time.`);
-
-        // End the game and notify the other player of the disconnection
-        const gameEndPayload = {
-            // Declare the other player as the winner
-            // TODO: You might want to handle this differently
-            winner: playerUuid ? this.playerService.getAllPlayerUUIDs().find(uuid => uuid !== playerUuid) : undefined,
-            rounds: this.gameEngine.getRounds()
-        };
-
-        // Send the game end message to all players
-        this.messagingService.publish('gameEndByDisconnection', gameEndPayload, 'all');
-
-        this.gameEngine.endGame();
-    }
-
-    public handlePlayerReconnection(playerUuid: string, newSocket: WebSocket) {
-        // Clear any reconnection timeout
-        const timeout = this.reconnectionTimeouts.get(playerUuid);
-        if (timeout) {
-            clearTimeout(timeout);
-            this.reconnectionTimeouts.delete(playerUuid);
-        }
-
-        // Find the player and update their socket
-        const player = this.playerService.getPlayer(playerUuid);
-        if (!player) {
-            console.error(`Player ${playerUuid} not found.`);
-            return;
-        }
-        player.socket = newSocket;
-
-        // Register the new socket with the messaging service
-        this.messagingService.registerPlayerSocket(playerUuid, newSocket);
-
-        // Handle the player's reconnection
-        this.messagingService.handlePlayerReconnection(playerUuid);
-    }
-
-    //////////////////////////////////////////////////
     //             Game engine delegates            //
     //////////////////////////////////////////////////
     onRoundStart(roundData: RoundData): void {
@@ -183,7 +115,6 @@ export class ExperimentalGameSession implements GameEngineDelegate {
     }
 
     onGameEnd(winner: Winner): void {
-        // TODO: Notify players of the game end
         this.notifyPlayersGameEnd(winner);
     }
 
@@ -286,4 +217,85 @@ export class ExperimentalGameSession implements GameEngineDelegate {
             this.playerService.getAllPlayerUUIDs().filter(uuid => uuid !== playerUuid)
         );
     }
+
+    //////////////////////////////////////////////////
+    //           PlayerLifeCycle delegates          //
+    //////////////////////////////////////////////////
+    onPlayerReady(playerUUID: string): void {
+        if (this.playerLifecycleService.isAllPlayersReady()) {
+            this.startCountdown();
+        }
+    }
+    onPlayerDisconnected(playerUUID: string): void {
+        // Set a timeout for player reconnection
+        const reconnectionTimeout = setTimeout(() => {
+            // Handle the case where the player does not reconnect in time
+            console.log(`Player ${playerUUID} did not reconnect in time.`);
+            this.endGameDueToDisconnection(playerUUID);
+        }, 10000); // Wait for 10 seconds
+
+        // Store the timeout so it can be cleared upon successful reconnection
+        this.reconnectionTimeouts.set(playerUUID, reconnectionTimeout);
+    }
+    onPlayerReconnected(playerUUID: string, newSocket: WebSocket): void {
+        // Clear any reconnection timeout
+        const timeout = this.reconnectionTimeouts.get(playerUUID);
+        if (timeout) {
+            clearTimeout(timeout);
+            this.reconnectionTimeouts.delete(playerUUID);
+        }
+
+        this.messagingService.registerPlayerSocket(playerUUID, newSocket);
+        this.messagingService.handlePlayerReconnection(playerUUID);
+    }
+
+    //////////////////////////////////////////////////
+    //        Game ended du to disconnection        //
+    //////////////////////////////////////////////////
+
+    private endGameDueToDisconnection(playerUuid: string) {
+        console.log(`Game ended due to player ${playerUuid} not reconnecting in time.`);
+
+        // End the game and notify the other player of the disconnection
+        const gameEndPayload = {
+            // Declare the other player as the winner
+            // TODO: You might want to handle this differently
+            winner: playerUuid ? this.playerLifecycleService.getAllPlayerUUIDs().find(uuid => uuid !== playerUuid) : undefined,
+            rounds: this.gameEngine.getRounds()
+        };
+
+        // Send the game end message to all players
+        this.messagingService.publish('gameEndByDisconnection', gameEndPayload, 'all');
+
+        this.gameEngine.endGame();
+    }
+
 }
+
+// public handlePlayerReconnection(playerUuid: string, newSocket: WebSocket) {
+//     // Clear any reconnection timeout
+//     const timeout = this.reconnectionTimeouts.get(playerUuid);
+//     if (timeout) {
+//         clearTimeout(timeout);
+//         this.reconnectionTimeouts.delete(playerUuid);
+//     }
+//
+//     // Register the new socket with the messaging service
+//     this.messagingService.registerPlayerSocket(playerUuid, newSocket);
+//
+//     // Handle the player's reconnection
+//     this.messagingService.handlePlayerReconnection(playerUuid);
+// }
+
+
+// public handlePlayerDisconnection(playerUuid: string) {
+//     // Set a timeout for player reconnection
+//     const reconnectionTimeout = setTimeout(() => {
+//         // Handle the case where the player does not reconnect in time
+//         console.log(`Player ${playerUuid} did not reconnect in time.`);
+//         this.endGameDueToDisconnection(playerUuid);
+//     }, 10000); // Wait for 10 seconds
+//
+//     // Store the timeout so it can be cleared upon successful reconnection
+//     this.reconnectionTimeouts.set(playerUuid, reconnectionTimeout);
+// }

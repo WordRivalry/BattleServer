@@ -1,12 +1,12 @@
-import {GameSession} from "./GameSession";
-import {Player} from "../QueueService";
 import {WebSocket} from 'ws';
-import {ExperimentalGameSession} from "./ExperimentalGameSession";
+import {ExperimentalGameSession} from "./gameSession/ExperimentalGameSession";
+import {PlayerInfo} from "./ExperimentalPlayerService";
+
 
 export class GameSessionManager {
     private gameSessions: Map<string, ExperimentalGameSession> = new Map(); // Map player UUID to GameSession
 
-    public startNewGame(players: Player[]) {
+    public startNewGame(players: PlayerInfo[]) {
         const newGameSession = new ExperimentalGameSession(players);
         for (const player of players) {
             this.gameSessions.set(player.uuid, newGameSession);

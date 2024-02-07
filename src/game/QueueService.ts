@@ -1,18 +1,10 @@
-import { WebSocket } from 'ws';
-
-export interface Player {
-    uuid: string;
-    username: string;
-    socket: WebSocket;
-}
+import {PlayerInfo} from "./ExperimentalPlayerService";
 
 class QueueService {
-    private queue: Player[] = [];
+    private queue: PlayerInfo[] = [];
 
-    public addPlayer(player: Player) {
-
+    public addPlayer( player: PlayerInfo) {
         // Guard clause to prevent duplicate players in the queue
-
         if (this.queue.some(p => p.uuid === player.uuid)) {
             console.log(`Player ${player.uuid} is already in the queue.`);
             return;
@@ -27,7 +19,7 @@ class QueueService {
         console.log(`Player ${uuid} removed from queue.`);
     }
 
-    public getQueue(): Player[] {
+    public getQueue(): PlayerInfo[] {
         return this.queue;
     }
 
@@ -40,7 +32,7 @@ class QueueService {
         return this.queue.length;
     }
 
-    public getPlayers(): Player[] {
+    public getPlayers(): PlayerInfo[] {
         return this.queue;
     }
 
