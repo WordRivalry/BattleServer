@@ -1,10 +1,8 @@
 export interface LetterTile {
     letter: string;
     value: number;
-    multiplier: {
-        type: 'letter' | 'word' | null;
-        value: number;
-    } | null;
+    multiplierLetter: number;
+    multiplierWord: number;
 }
 
 export type LetterGrid = LetterTile[][];

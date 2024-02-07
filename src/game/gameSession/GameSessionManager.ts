@@ -6,10 +6,11 @@ import {ExperimentalGameSession} from "./ExperimentalGameSession";
 export class GameSessionManager {
     private gameSessions: Map<string, ExperimentalGameSession> = new Map(); // Map player UUID to GameSession
 
-    public startNewGame(player1: Player, player2: Player, player1Uuid: string, player2Uuid: string) {
-        const newGameSession = new ExperimentalGameSession(player1, player2);
-        this.gameSessions.set(player1Uuid, newGameSession);
-        this.gameSessions.set(player2Uuid, newGameSession);
+    public startNewGame(players: Player[]) {
+        const newGameSession = new ExperimentalGameSession(players);
+        for (const player of players) {
+            this.gameSessions.set(player.uuid, newGameSession);
+        }
     }
 
     public getGameSession(playerUuid: string): ExperimentalGameSession | undefined {
@@ -21,20 +22,13 @@ export class GameSessionManager {
         const gameSession = this.gameSessions.get(playerUuid);
 
         if (gameSession) {
-            // The actual end game logic and player notification is handled by GameSession.endGame()
-            // Here, we focus on cleanup after GameSession has concluded its responsibilities.
+            // Remove the game session from the map.
+            // For all the players in the game session
+            for (const uuid of gameSession.playersUUIDs) {
+                this.gameSessions.delete(uuid);
+            }
 
-            // Assuming GameSession.endGame() is called separately when the game logic determines the end has been reached.
-            // If it's not automatically called, you might want to trigger it here, ensuring the game logic is neatly concluded before cleanup.
-            // gameSession.endGame(); // Uncomment if you need to manually trigger game conclusion logic here.
-
-            // Perform cleanup actions, such as logging, resource deallocation, or preparing players for a new game.
-
-            // Finally, remove the session from the manager to free up resources and allow players to start new games.
-            this.gameSessions.delete(gameSession.player1Uuid);
-            this.gameSessions.delete(gameSession.player2Uuid);
-
-            console.log(`Game session between ${gameSession.player1Username} and ${gameSession.player2Username} has been concluded and removed.`);
+            console.log(`Game session has been concluded and removed.`);
         } else {
             console.log(`No active game session found for player UUID: ${playerUuid}.`);
         }

@@ -359,10 +359,8 @@ export class GameSession {
                 const letterTile: LetterTile = {
                     letter: this.getRandomLetter(),
                     value: Math.floor(Math.random() * 5) + 1, // Example values 1-5
-                    multiplier: Math.random() > 0.85 ? { // 15% chance to have a multiplier
-                        type: Math.random() > 0.5 ? 'letter' : 'word',
-                        value: Math.random() > 0.5 ? 2 : 3, // Example multipliers
-                    } : null,
+                    multiplierLetter: Math.random() < 0.1 ? 2 : 1, // 10% chance of 2x letter
+                    multiplierWord: Math.random() < 0.05 ? 3 : 1, // 5% chance of 3x word
                 };
                 row.push(letterTile);
             }

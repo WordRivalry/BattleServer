@@ -8,29 +8,32 @@ export type Row = number;
 export type Col = number;
 export type Path = [Row, Col][];
 
+export type PlayerUUID = string;
+export type Winner = PlayerUUID | 'tie';
+
+export interface PlayerRoundData {
+    score: number;
+    words: [Timestamp, Path][];
+}
+
 export interface RoundData {
     roundNumber: number;
-    player1Score: number;
-    player2Score: number;
-    winner: 'player1' | 'player2' | 'tie' | undefined;
-    // Storing paths as an array of tuples with a timestamp and an array of (row, col) pairs
-    words: {
-        player1: [Timestamp, Path][];
-        player2: [Timestamp, Path][];
-    };
+    playerData: Map<PlayerUUID, PlayerRoundData>;
+    winner: Winner | undefined; // Winner can be a PlayerUUID or 'tie'
     grid: LetterGrid;
-    startTime: number; // Timestamp when the round started
-    duration: number; // Duration of the round in milliseconds
-    endTime?: number; // Timestamp when the round ended
+    startTime: number;
+    duration: number;
+    endTime?: number;
 }
+
 
 export type GameEngineState = 'undefined' | 'preGame' | 'inRound' | 'intermission' | 'ended';
 
 export interface GameEngineDelegate {
     onRoundStart: (roundData: RoundData) => void;
     onRoundEnd: (roundData: RoundData) => void;
-    onScoreUpdate: (playerId: 'player1' | 'player2', score: number) => void;
-    onGameEnd: (winner: 'player1' | 'player2' | 'tie') => void;
+    onScoreUpdate: (playerUuid: PlayerUUID, score: number) => void;
+    onGameEnd: (winner: Winner) => void;
 
     // For real-time games, providing periodic time updates could be beneficial.
     onTimeUpdate: (remainingTime: number) => void;
@@ -53,7 +56,7 @@ export class GameEngine {
         wordScoreCalculator: (word: LetterTile[]) => number;
         gridGenerator: () => LetterGrid;
         checkGameOver: (rounds: RoundData[]) => boolean;
-        winnerDeterminator: (rounds: RoundData[]) => 'player1' | 'player2' | 'tie';
+        winnerDeterminator: (rounds: RoundData[]) => Winner;
     };
 
     constructor() {
@@ -72,13 +75,6 @@ export class GameEngine {
     }
 
     // Getters
-    public getCurrentState(): GameEngineState {
-        return this.currentState;
-    }
-
-    public getCurrentRoundIndex(): number {
-        return this.currentRoundIndex;
-    }
 
     public getCurrentRound(): RoundData | undefined {
         return this.rounds[this.currentRoundIndex];
@@ -86,18 +82,6 @@ export class GameEngine {
 
     public getRounds(): RoundData[] {
         return this.rounds;
-    }
-
-    public getCurrentRoundStartTime(): number | undefined {
-        return this.rounds[this.currentRoundIndex]?.startTime;
-    }
-
-    public getCurrentRoundDuration(): number | undefined {
-        return this.rounds[this.currentRoundIndex]?.duration;
-    }
-
-    public getRemainingTimeOnClock(): number | undefined {
-        return this.gameClock?.getRemainingTime();
     }
 
     public getCurrentRoundGrid(): LetterGrid | undefined {
@@ -205,43 +189,37 @@ export class GameEngine {
         }
     }
 
-    public addWord(player: 'player1' | 'player2', wordPath: Path): void {
+    public addWord(playerUuid: string, wordPath: Path): void {
         if (this.currentState === 'inRound' && this.gameClock?.getRemainingTime()) {
-            let grid = this.getCurrentRoundGrid()
+            let grid = this.getCurrentRoundGrid();
             if (grid) {
-
                 const word = this.getPathLetterTiles(wordPath, grid);
-
                 const baseScore = this.config.wordScoreCalculator(word);
-                const currentScores = {player1: this.rounds[this.currentRoundIndex].player1Score, player2: this.rounds[this.currentRoundIndex].player2Score};
-                const momentumScore = this.calculateMomentumScore(player, baseScore, word, currentScores);
 
-                // Update the player's score with the momentum adjusted score
-                if (player === 'player1') {
-                    this.rounds[this.currentRoundIndex].player1Score += momentumScore;
-                } else {
-                    this.rounds[this.currentRoundIndex].player2Score += momentumScore;
+                let playerData = this.rounds[this.currentRoundIndex].playerData.get(playerUuid);
+                if (!playerData) {
+                    playerData = { score: 0, words: [] };
+                    this.rounds[this.currentRoundIndex].playerData.set(playerUuid, playerData);
                 }
 
-                // Update the word list with the new word and its scoring time
-                this.rounds[this.currentRoundIndex].words[player].push([
-                    this.config.roundDuration - this.gameClock?.getRemainingTime(), wordPath
-                ]);
+                // Calculate and update the score
+                const momentumScore = this.calculateMomentumScore(playerUuid, baseScore, word);
+                playerData.score += momentumScore;
 
-                // Optionally, invoke the delegate's onScoreUpdate method
-                this.delegate?.onScoreUpdate(player, momentumScore);
+                // Update the words
+                playerData.words.push([this.config.roundDuration - this.gameClock?.getRemainingTime(), wordPath]);
+
+                // Invoke the delegate's onScoreUpdate method
+                this.delegate?.onScoreUpdate(playerUuid, playerData.score);
             }
         }
     }
 
-
     private createRoundData(duration: number): RoundData {
         return {
-            roundNumber: this.currentRoundIndex + 1, // +1 to convert from 0-based index to 1-based round number
-            player1Score: 0,
-            player2Score: 0,
+            roundNumber: this.currentRoundIndex + 1,
+            playerData: new Map(),
             winner: undefined,
-            words: {player1: [], player2: []},
             grid: this.defaultGridGenerator(),
             startTime: Date.now(),
             duration: duration,
@@ -249,43 +227,64 @@ export class GameEngine {
     }
 
     private defaultCheckGameOver(): boolean {
-        const wins = {player1: 0, player2: 0};
-        for (const round of this.rounds) {
-            if (round.winner === 'player1') wins.player1 += 1;
-            if (round.winner === 'player2') wins.player2 += 1;
-        }
+        const roundVictories = new Map<PlayerUUID, number>();
 
-        // Game finishes if either player wins 2 rounds
-        return wins.player1 === 2 || wins.player2 === 2;
+        this.rounds.forEach((round) => {
+            if (round.winner !== 'tie' && round.winner) {
+                roundVictories.set(round.winner, (roundVictories.get(round.winner) || 0) + 1);
+            }
+        });
+
+        const totalRounds = this.rounds.length;
+        let gameOver = false;
+
+        roundVictories.forEach((victories) => {
+            if (victories > totalRounds / 2) {
+                gameOver = true;
+            }
+        });
+
+        return gameOver;
     }
 
-    private defaultWinnerDeterminator(): 'player1' | 'player2' | 'tie' {
-        const wins = {player1: 0, player2: 0};
-        for (const round of this.rounds) {
-            if (round.winner === 'player1') wins.player1 += 1;
-            if (round.winner === 'player2') wins.player2 += 1;
-        }
 
-        if (wins.player1 > wins.player2) return 'player1';
-        if (wins.player2 > wins.player1) return 'player2';
-        return 'tie';
+     defaultWinnerDeterminator(): Winner {
+        const totalScores = new Map<PlayerUUID, number>();
+
+        this.rounds.forEach((roundData) => {
+            roundData.playerData.forEach((data, uuid) => {
+                if (!totalScores.has(uuid)) {
+                    totalScores.set(uuid, data.score);
+                } else {
+                    totalScores.set(uuid, totalScores.get(uuid)! + data.score);
+                }
+            });
+        });
+
+        let highestScore = -1;
+        let potentialWinners: PlayerUUID[] = [];
+
+        totalScores.forEach((score, uuid) => {
+            if (score > highestScore) {
+                highestScore = score;
+                potentialWinners = [uuid];
+            } else if (score === highestScore) {
+                potentialWinners.push(uuid);
+            }
+        });
+
+        return potentialWinners.length === 1 ? potentialWinners[0] : 'tie';
     }
 
     private defaultWordScoreCalculator(word: LetterTile[]): number {
         let score = 0;
         // Calculate base score for the word
         for (let letter of word) {
-            if (letter.multiplier?.type === 'letter') {
-                score += letter.value * letter.multiplier.value;
-            } else {
-                score += letter.value;
-            }
+            score += letter.value * letter.multiplierLetter
         }
         // Apply word multiplier if any
         for (let letter of word) {
-            if (letter.multiplier?.type === 'word') {
-                score *= letter.multiplier.value;
-            }
+            score *= letter.multiplierWord;
         }
         return score;
     }
@@ -295,17 +294,14 @@ export class GameEngine {
         const gridSize = this.config.gridSize;
 
         // Function to determine multiplier presence and value
-        const determineMultiplier = (): any => {
+        const determineMultiplier = (isLetter: boolean): any => {
             // Increase likelihood of multipliers in later rounds
             const chance = Math.random();
             const threshold = 0.85 - ((this.currentRoundIndex + 1) * 0.05); // Increase chance by 5% each round
             if (chance > threshold) {
-                return {
-                    type: chance > 0.5 ? 'letter' : 'word',
-                    value: chance > 0.75 ? 2 : 3,
-                };
+                return isLetter ? (chance > 0.75 ? 2 : 3) : (chance > 0.85 ? 2 : 1);
             }
-            return null;
+            return 1;
         };
 
         for (let i = 0; i < gridSize; i++) {
@@ -318,7 +314,8 @@ export class GameEngine {
                 const letterTile: LetterTile = {
                     letter,
                     value: score, // Use the predefined score
-                    multiplier: determineMultiplier(),
+                    multiplierLetter: determineMultiplier(true),
+                    multiplierWord: determineMultiplier(false),
                 };
                 row.push(letterTile);
             }
@@ -327,9 +324,7 @@ export class GameEngine {
         return grid;
     }
 
-    private calculateMomentumScore(player: string, baseScore: number, word: LetterTile[], playerScores: { player1: number, player2: number }): number {
-        // Determine score proximity
-        const scoreDifference = Math.abs(playerScores.player1 - playerScores.player2);
+    private calculateMomentumScore(playerUuid: string, baseScore: number, word: LetterTile[]): number {
 
         // Calculate word length
         const wordLength = word.length;
@@ -338,19 +333,13 @@ export class GameEngine {
         const complexLetters = ['Q', 'X', 'Z', 'W'];
         const complexityFactor = word.reduce((acc, tile) => acc + (complexLetters.includes(tile.letter) ? 1 : 0), 0);
 
-        // Define your momentum scoring logic here
-        // For example, a simple momentum bonus could be:
+        // Define momentum scoring logic
         let momentumBonus = 1; // No bonus by default
 
-        // Adjusting momentum bonus based on score proximity, word length, and word complexity
-        if (scoreDifference < 50) { // Assuming scores are very close
-            momentumBonus += 0.1; // Increase the bonus by 10%
-        }
-
+        // Adjust momentum bonus based on word length and complexity
         if (wordLength > 5) { // Longer words get a bonus
             momentumBonus += 0.05 * (wordLength - 5);
         }
-
         if (complexityFactor > 0) { // Add complexity bonus
             momentumBonus += 0.1 * complexityFactor;
         }
@@ -361,37 +350,25 @@ export class GameEngine {
             // Calculate the current word timestamp
             const currentWordTimestamp = this.config.roundDuration - remainingTime;
 
-            // Found in roundData last added player word timestamp
+            // Find the last added word timestamp for this player
             let lastWordTimestamp;
-            let words = this.rounds[this.currentRoundIndex].words;
+            let words = this.getPlayerWords(playerUuid);
 
-            if (player === 'player1') {
-                // guard at least one word was played
-                if (words.player1.length > 0) {
-                    lastWordTimestamp = words.player1[words.player1.length - 1][0];
-                }
-
-            } else {
-                // guard at least one word was played
-                if (words.player2.length > 0) {
-                    lastWordTimestamp = words.player2[words.player2.length - 1][0];
-                }
+            if (words && words.length > 0) {
+                lastWordTimestamp = words[words.length - 1][0];
             }
 
             if (lastWordTimestamp !== undefined) {
-
                 // Calculate the time difference between the last and current word submissions
-                let timeDifference = lastWordTimestamp !== null ? currentWordTimestamp - lastWordTimestamp : null;
+                let timeDifference = currentWordTimestamp - lastWordTimestamp;
 
                 // Adjust very fast momentum bonus based on the time difference
-                if (timeDifference !== null) {
-                    if (timeDifference <= 2000) { // Within 2 seconds
-                        veryFastMomentumBonus = 1.5;
-                    } else if (timeDifference <= 3000) { // Within 3 seconds
-                        veryFastMomentumBonus = 1.3;
-                    } else if (timeDifference <= 5000) { // Within 5 seconds
-                        veryFastMomentumBonus = 1.1;
-                    }
+                if (timeDifference <= 2000) { // Within 2 seconds
+                    veryFastMomentumBonus = 1.5;
+                } else if (timeDifference <= 3000) { // Within 3 seconds
+                    veryFastMomentumBonus = 1.3;
+                } else if (timeDifference <= 5000) { // Within 5 seconds
+                    veryFastMomentumBonus = 1.1;
                 }
             }
         }
@@ -399,6 +376,15 @@ export class GameEngine {
         // Apply both the momentum bonus and the very fast momentum bonus
         return baseScore * momentumBonus * veryFastMomentumBonus;
     }
+
+    private getPlayerScore(playerUuid: string): number {
+        return this.rounds[this.currentRoundIndex].playerData.get(playerUuid)?.score || 0;
+    }
+
+    private getPlayerWords(playerUuid: string): [Timestamp, Path][] {
+        return this.rounds[this.currentRoundIndex].playerData.get(playerUuid)?.words || [];
+    }
+
 
     private getPathLetterTiles(path: Path, grid: LetterGrid): LetterTile[] {
         const letterTiles: LetterTile[] = [];

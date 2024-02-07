@@ -1,28 +1,39 @@
-import {LetterGrid, LetterTile} from "../LetterGrid";
 import {Player} from "../QueueService";
 import {WebSocket} from 'ws';
-import {GameEngine, GameEngineDelegate, GameEngineState, Path, RoundData} from "./GameEngine";
+import {GameEngine, GameEngineDelegate, Path, PlayerUUID, RoundData, Winner} from "./GameEngine";
 import {clearTimeout} from "timers";
+import {PlayerService} from "./PlayerService";
+import {MessagingService} from "./MessagingService";
 
 export class ExperimentalGameSession implements GameEngineDelegate {
-    private readonly player1: Player;
-    private readonly player2: Player;
+    private readonly playerService: PlayerService = new PlayerService();
+    private readonly messagingService: MessagingService = new MessagingService();
+    private readonly gameEngine: GameEngine = new GameEngine();
+
+    private readonly reconnectionTimeouts: Map<string, NodeJS.Timeout> = new Map(); // Attributes to track reconnection timeouts
+    private readonly playerReadyStates: Map<string, boolean> = new Map(); // Attributes to track player readiness
     private gameSessionState: 'sessionCreated' | 'exchangeInfo' | 'inGame' | 'ended' = 'sessionCreated';
-    private gameEngine: GameEngine;
-    private reconnectionTimeouts: Map<string, NodeJS.Timeout> = new Map(); // Attributes to track reconnection timeouts
-    private player1AckToStart: boolean = false;
-    private player2AckToStart: boolean = false;
 
-    constructor(player1: Player, player2: Player) {
-        this.player1 = player1;
-        this.player2 = player2;
-        this.sendMetaData();
+    get playersUUIDs(): string[] {
+        return this.playerService.getAllPlayerUUIDs();
+    }
 
-        // Initialize GameEngine with a state change handler
-        this.gameEngine = new GameEngine();
-        this.gameEngine.setGridSize(4)
-        this.gameEngine.setRoundDuration(30000)
-        this.gameEngine.setIntermissionDuration(5000)
+    get isSessionEnded() {
+        return this.gameSessionState === 'ended';
+    }
+
+    constructor(players: Player[]) {
+        // Initialize the game session with the provided players
+        for (const player of players) {
+            this.playerService.addPlayer(player);
+            this.playerReadyStates.set(player.uuid, false);
+            this.messagingService.registerPlayerSocket(player.uuid, player.socket);
+        }
+
+        // Initialize the game engine
+        this.gameEngine.setGridSize(4);
+        this.gameEngine.setRoundDuration(30000);
+        this.gameEngine.setIntermissionDuration(5000);
         this.gameEngine.setCheckGameOver((rounds: RoundData[]) => {
             // Check best of 3 rounds
             const wins = {player1: 0, player2: 0};
@@ -32,88 +43,74 @@ export class ExperimentalGameSession implements GameEngineDelegate {
             }
             return wins.player1 > 1 || wins.player2 > 1;
         });
-
         this.gameEngine.setDelegate(this);
+
+        // Send each-other's usernames
+        this.sendMetaData();
     }
 
-    get player1Uuid() {
-        return this.player1.uuid;
+    private sendMetaData(): void {
+        this.gameSessionState = 'exchangeInfo';
+
+        // Directly get all usernames
+        const allUsernames = this.playerService.getAllUsernames();
+
+        // Iterate over all players
+        this.playerService.forEachPlayer(currentPlayer => {
+            // Exclude the current player's username from the list of opponents
+            const opponentsUsernames = allUsernames.filter(username => username !== currentPlayer.username);
+
+            // Send opponentsUsernames to the current player
+            this.messagingService.publish(
+                'metaData',
+                { opponentsUsernames: opponentsUsernames },
+                currentPlayer.uuid
+            );
+        });
     }
 
-    get player2Uuid() {
-        return this.player2.uuid;
-    }
+    public playerAckToStart(playerUuid: string): void {
+        // Mark the player as ready. Here, you'd track readiness in a map or similar structure.
+        this.playerReadyStates.set(playerUuid, true);
 
-    get player1Username() {
-        return this.player1.username;
-    }
-
-    get player2Username() {
-        return this.player2.username;
-    }
-
-    get isSessionEnded() {
-        return this.gameSessionState === 'ended';
-    }
-
-    public playerAckToStart(playerUuid: string) {
-        if (playerUuid === this.player1.uuid) {
-            this.player1AckToStart = true;
-        } else if (playerUuid === this.player2.uuid) {
-            this.player2AckToStart = true;
+        // Check if all players are ready
+        if (this.areAllPlayersReady()) {
+            this.startCountdown();
         }
-
-        if (this.player1AckToStart && this.player2AckToStart) {
-            this.gameEngine.startGame()
-        }
     }
 
-    // GameEngineDelegate methods
-    onRoundStart(roundData: RoundData): void {
-        // Handle round start
-        this.notifyPlayersRoundStart(roundData);
+    private areAllPlayersReady(): boolean {
+        // Check readiness for all players
+        return Array.from(this.playerReadyStates.values()).every(isReady => isReady);
     }
 
-    onRoundEnd(roundData: RoundData): void {
-        // Handle round end
-        this.notifyPlayersIntermission(roundData);
+    private startCountdown() {
+        let countdown = 3; // Start the countdown at 3
+        const intervalId = setInterval(() => {
+            // Send the countdown message to both players
+            this.messagingService.publish('countdown', countdown, 'all')
+
+            if (countdown > 1) {
+                countdown--; // Decrease the countdown
+            } else {
+                // Countdown has finished, clear the interval
+                clearInterval(intervalId);
+
+                // Now actually start the game
+                this.gameEngine.startGame();
+            }
+        }, 1000); // Set the interval to 1 second (1000 milliseconds)
     }
 
-    onScoreUpdate(playerUuid: 'player1' | 'player2', score: number): void {
-        // Handle score update
-        this.notifyScoreToOpponent(playerUuid, score);
-    }
-
-    onGameEnd(winner: 'player1' | 'player2' | 'tie'): void {
-        // Handle game end
-        this.notifyPlayersGameEnd();
-    }
-
-    onGameInitialize(): void {
-
-    }
-
-    onTimeUpdate(remainingTime: number): void {
-        this.sendToPlayer(this.player1, {type: 'timeUpdate', remainingTime});
-        this.sendToPlayer(this.player2, {type: 'timeUpdate', remainingTime});
-    }
-
-    public updateScore(playerUuid: string, wordPath: Path, newScore: number) {
-        // Update score in the current round for the appropriate player
+    public updateScore(playerUuid: PlayerUUID, wordPath: Path): void {
         const round = this.gameEngine.getCurrentRound();
         if (!round) return;
-        if (playerUuid === this.player1.uuid) {
-            round.player1Score = newScore;
-            this.gameEngine.addWord(playerUuid === this.player1.uuid ? 'player1' : 'player2', wordPath);
-            // Broadcast the updated score from player1 to player2
-            this.player2.socket.send(JSON.stringify({type: 'opponentScoreUpdate', score: newScore}));
-        } else {
-            round.player2Score = newScore;
-            this.gameEngine.addWord(playerUuid === this.player1.uuid ? 'player1' : 'player2', wordPath);
-            // Broadcast the updated score from player2 to player1
-            this.player1.socket.send(JSON.stringify({type: 'opponentScoreUpdate', score: newScore}));
-        }
+        this.gameEngine.addWord(playerUuid, wordPath);
     }
+
+    //////////////////////////////////////////////////
+    //        Disconnection and reconnection        //
+    //////////////////////////////////////////////////
 
     public handlePlayerDisconnection(playerUuid: string) {
         // Set a timeout for player reconnection
@@ -127,136 +124,6 @@ export class ExperimentalGameSession implements GameEngineDelegate {
         this.reconnectionTimeouts.set(playerUuid, reconnectionTimeout);
     }
 
-    public handlePlayerReconnection(playerUuid: string, newSocket: WebSocket) {
-        // Clear any reconnection timeout
-        const timeout = this.reconnectionTimeouts.get(playerUuid);
-        if (timeout) {
-            clearTimeout(timeout);
-            this.reconnectionTimeouts.delete(playerUuid);
-        }
-
-        // Update player's socket
-        if (playerUuid === this.player1.uuid) {
-            this.player1.socket = newSocket;
-        } else if (playerUuid === this.player2.uuid) {
-            this.player2.socket = newSocket;
-        }
-
-        switch (this.gameSessionState) {
-            case 'sessionCreated' || 'exchangeInfo':
-                this.resendMetaData(playerUuid);
-                break;
-            case 'inGame':
-                switch (this.gameEngine.getCurrentState()) {
-                    case 'inRound':
-                        this.resendCurrentRoundState(playerUuid);
-                        break;
-                    case 'intermission':
-                        this.resendIntermissionState(playerUuid);
-                        break;
-                    case 'ended':
-                        this.resendEndGameState(playerUuid);
-                        break;
-                }
-                break;
-            case 'ended':
-                this.resendEndGameState(playerUuid);
-                break;
-        }
-
-        // Resend appropriate data based on game session state
-        switch (this.gameSessionState) {
-            case 'exchangeInfo':
-                this.resendMetaData(playerUuid);
-                break;
-        }
-
-        console.log(`Player ${playerUuid} successfully reconnected during ${this.gameSessionState}.`);
-    }
-
-    private sendMetaData() {
-        this.gameSessionState = 'exchangeInfo';
-
-        // Send initial metadata about the opponents
-        const metaDataPayload1 = {
-            type: 'metaData', opponentUsername: this.player2.username,
-        };
-
-        const metaDataPayload2 = {
-            type: 'metaData', opponentUsername: this.player1.username,
-        };
-
-        // Send metadata to each player
-        this.player1.socket.send(JSON.stringify(metaDataPayload1));
-        this.player2.socket.send(JSON.stringify(metaDataPayload2));
-
-        console.log(`Metadata sent to both players: ${this.player1.username} vs ${this.player2.username}`);
-    }
-
-    private sendToPlayer(player: Player, message: object) {
-        if (player.socket && player.socket.readyState === WebSocket.OPEN) {
-            player.socket.send(JSON.stringify(message));
-        }
-    }
-
-    private notifyPlayersRoundStart(roundData: RoundData) {
-        this.gameSessionState = 'inGame';
-
-        const gameStartPayload = {
-            type: 'gameStart', startTime: roundData.startTime, duration: roundData.duration, grid: roundData.grid,
-        };
-
-        // Send the grid to both players
-        this.sendToPlayer(this.player1, gameStartPayload);
-        this.sendToPlayer(this.player2, gameStartPayload);
-
-        console.log(`New round started. Grid and timer sent.`);
-    }
-
-    private notifyPlayersIntermission(round: RoundData) {
-        // Determine the winner of the current round and update round data
-        round.winner = round.player1Score > round.player2Score ? 'player1' : round.player1Score < round.player2Score ? 'player2' : 'tie';
-
-        // Announce end of round and send scores and winner to both players
-        const endRoundPayload = {
-            type: 'endRound', round: round.roundNumber, player1Score: round.player1Score, player2Score: round.player2Score, winner: round.winner,
-        };
-
-        this.sendToPlayer(this.player1, endRoundPayload);
-        this.sendToPlayer(this.player2, endRoundPayload);
-    }
-
-    private notifyPlayersGameEnd() {
-        // Determine the game winner based on rounds won
-        const wins = {player1: 0, player2: 0};
-
-        this.gameEngine.getRounds().forEach(round => {
-            if (round.winner === 'player1') wins.player1++;
-            if (round.winner === 'player2') wins.player2++;
-        });
-
-        this.gameSessionState = 'ended';
-
-        const gameWinner = wins.player1 > wins.player2 ? 'player1' : 'player2';
-        const gameEndPayload = {
-            type: 'gameEnd', winner: gameWinner, rounds: this.gameEngine.getRounds(),
-        };
-
-        // Send the game end message to both players
-        this.player1.socket.send(JSON.stringify(gameEndPayload));
-        this.player2.socket.send(JSON.stringify(gameEndPayload));
-
-        console.log(`Game ended. Winner: ${gameWinner}`);
-    }
-
-    private notifyScoreToOpponent(playerUuid: string, score: number) {
-        const opponent = playerUuid === this.player1.uuid ? this.player2 : this.player1;
-        const scorePayload = {
-            type: 'opponentScoreUpdate', score,
-        };
-        this.sendToPlayer(opponent, scorePayload);
-    }
-
     private endGameDueToDisconnection(playerUuid: string) {
         // End the game prematurely due to a player not reconnecting in time
         // You might decide to declare the other player as the winner or handle it differently
@@ -265,58 +132,158 @@ export class ExperimentalGameSession implements GameEngineDelegate {
 
         // End the game and notify the other player of the disconnection
         const gameEndPayload = {
-            type: 'gameEndByDisconnection', winner: playerUuid === this.player1.uuid ? 'player2' : 'player1', rounds: this.gameEngine.getRounds()
+            // Declare the other player as the winner
+            // TODO: You might want to handle this differently
+            winner: playerUuid ? this.playerService.getAllPlayerUUIDs().find(uuid => uuid !== playerUuid) : undefined,
+            rounds: this.gameEngine.getRounds()
         };
+
+        // Send the game end message to all players
+        this.messagingService.publish('gameEndByDisconnection', gameEndPayload, 'all');
 
         this.gameEngine.endGame();
     }
-    private resendMetaData(playerUuid: string) {
-        // Resend opponent's username and any initial game info
-        const player = playerUuid === this.player1.uuid ? this.player1 : this.player2;
-        const opponent = playerUuid === this.player1.uuid ? this.player2 : this.player1;
-        const metaDataPayload = {
-            type: 'metaData', opponentUsername: opponent.username,
-        };
-        player.socket.send(JSON.stringify(metaDataPayload));
-    }
-    private resendCurrentRoundState(playerUuid: string) {
 
-        const round = this.gameEngine.getCurrentRound();
-        if (!round) return;
-
-        // Resend the current round's grid, scores, and remaining time
-        const player = playerUuid === this.player1.uuid ? this.player1 : this.player2;
-
-        const remainingTime = round.endTime ? Math.max(0, round.endTime - Date.now()) : round.duration;
-        const gameStatePayload = {
-            type: 'gameState', round: round.roundNumber, grid: round.grid, player1Score: round.player1Score, player2Score: round.player2Score, remainingTime,
-        };
-        player.socket.send(JSON.stringify(gameStatePayload));
-    }
-    private resendIntermissionState(playerUuid: string) {
-        // Inform the player about the intermission and the next round start
-        const player = playerUuid === this.player1.uuid ? this.player1 : this.player2;
-        const intermissionPayload = {
-            type: 'intermission', nextRoundStartIn: this.gameEngine.getRemainingTimeOnClock()
-        };
-        player.socket.send(JSON.stringify(intermissionPayload));
-    }
-    private resendEndGameState(playerUuid: string) {
-        // Resend the end game state with final scores and winner
-        const wins = this.calculateWins();
-        const gameEndPayload = {
-            type: 'gameEnd', winner: wins.player1 > wins.player2 ? 'player1' : 'player2', rounds: this.gameEngine.getRounds(),
-        };
-        const player = playerUuid === this.player1.uuid ? this.player1 : this.player2;
-        player.socket.send(JSON.stringify(gameEndPayload));
-    }
-
-    private calculateWins() {
-        const wins = {player1: 0, player2: 0};
-        for (const round of this.gameEngine.getRounds()) {
-            if (round.winner === 'player1') wins.player1++;
-            if (round.winner === 'player2') wins.player2++;
+    public handlePlayerReconnection(playerUuid: string, newSocket: WebSocket) {
+        // Clear any reconnection timeout
+        const timeout = this.reconnectionTimeouts.get(playerUuid);
+        if (timeout) {
+            clearTimeout(timeout);
+            this.reconnectionTimeouts.delete(playerUuid);
         }
-        return wins;
+
+        // Find the player and update their socket
+        const player = this.playerService.getPlayer(playerUuid);
+        if (!player) {
+            console.error(`Player ${playerUuid} not found.`);
+            return;
+        }
+        player.socket = newSocket;
+
+        // Register the new socket with the messaging service
+        this.messagingService.registerPlayerSocket(playerUuid, newSocket);
+
+        // Handle the player's reconnection
+        this.messagingService.handlePlayerReconnection(playerUuid);
+    }
+
+    //////////////////////////////////////////////////
+    //             Game engine delegates            //
+    //////////////////////////////////////////////////
+    onRoundStart(roundData: RoundData): void {
+        this.notifyPlayersRoundStart(roundData);
+    }
+
+    onRoundEnd(roundData: RoundData): void {
+        this.notifyPlayersIntermission(roundData);
+    }
+
+    onScoreUpdate(playerUuid: PlayerUUID, score: number): void {
+        this.notifyScoreToOpponent(playerUuid, score);
+    }
+
+    onGameEnd(winner: Winner): void {
+        // TODO: Notify players of the game end
+        this.notifyPlayersGameEnd(winner);
+    }
+
+    onGameInitialize(): void {
+    }
+
+    onTimeUpdate(remainingTime: number): void {
+        this.messagingService.publish('timeUpdate', remainingTime, 'all');
+    }
+
+    private notifyPlayersRoundStart(roundData: RoundData) {
+        this.gameSessionState = 'inGame';
+
+        let payload = {
+            round: roundData.roundNumber,
+            duration: roundData.duration,
+            grid: roundData.grid,
+        };
+
+        // Send the grid to all players
+        this.messagingService.publish(
+            'roundStart',
+            payload,
+            'all'
+        );
+
+        console.log(`New round started. Grid and timer sent.`);
+    }
+
+    private notifyPlayersIntermission(round: RoundData): void {
+        // First, determine the winner based on the updated scores within the round
+        let highestScore = -1;
+        let winnerUuid: Winner | undefined = 'tie'; // Default to 'tie'
+        round.playerData.forEach((data, uuid) => {
+            if (data.score > highestScore) {
+                highestScore = data.score;
+                winnerUuid = uuid; // Update winner to current UUID
+            } else if (data.score === highestScore) {
+                winnerUuid = 'tie'; // If scores are equal, mark as tie
+            }
+        });
+
+        // Updating the winner in round data
+        round.winner = winnerUuid;
+
+        // Notify each player with their personalized end round summary
+        this.playerService.forEachPlayer(player => {
+            const playerData = round.playerData.get(player.uuid);
+            const playerScore = playerData ? playerData.score : 0;
+
+            // Calculate the total score of all opponents for comparison
+            let opponentScoreTotal = 0;
+            round.playerData.forEach((data, uuid) => {
+                if (uuid !== player.uuid) {
+                    opponentScoreTotal += data.score;
+                }
+            });
+
+            const endRoundPayload = {
+                round: round.roundNumber,
+                yourScore: playerScore,
+                opponentScoreTotal: opponentScoreTotal, // This might need adjustment based on how you want to present opponent scores
+                winner: winnerUuid
+            };
+
+            // Send the customized payload to each player
+            this.messagingService.publish(
+                'endRound',
+                endRoundPayload,
+                player.uuid
+            );
+        });
+    }
+
+    private notifyPlayersGameEnd(winner: Winner) {
+        this.gameSessionState = 'ended';
+
+        const gameEndPayload = {
+            winner: winner,
+            rounds: this.gameEngine.getRounds(),
+        };
+
+        // Send the game end message to all players
+        this.messagingService.publish('gameEnd', gameEndPayload, 'all');
+
+        console.log(`Game ended. Winner: ${winner}`);
+    }
+
+    private notifyScoreToOpponent(playerUuid: string, score: number) {
+
+        const scoreUpdateMessage = {
+            playerUuid: playerUuid,
+            newScore: score,
+        };
+
+        // Broadcast the updated score to all players except the one who scored
+        this.messagingService.publish(
+            'opponentScoreUpdate',
+            scoreUpdateMessage,
+            this.playerService.getAllPlayerUUIDs().filter(uuid => uuid !== playerUuid)
+        );
     }
 }
