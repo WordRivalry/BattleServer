@@ -1,5 +1,6 @@
 import {WebSocket} from 'ws';
 import {PlayerUUID} from "./gameSession/GameEngine";
+import {Player} from "./gameSession/GameSessionPlayerService";
 
 export interface PlayerLifecycleDelegate {
     onPlayerReady(playerUUID: string): void;
