@@ -2,17 +2,19 @@ import {WebSocket} from 'ws';
 import {GameEngine, GameEngineDelegate, Path, PlayerUUID, RoundData, Winner} from "./GameEngine";
 import {clearTimeout} from "timers";
 import {MessagingService} from "./MessagingService";
-import {PlayerLifecycleDelegate, PlayerLifecycleService} from "../PlayerLifecycleService";
+import {Player, GameSessionPlayerDelegate, GameSessionPlayerService} from "./GameSessionPlayerService";
+import {createScopedLogger} from "../../logger/Logger";
 
-export class ExperimentalGameSession implements GameEngineDelegate, PlayerLifecycleDelegate {
+export class ExperimentalGameSession implements GameEngineDelegate, GameSessionPlayerDelegate {
     private readonly messagingService: MessagingService = new MessagingService();
     private readonly gameEngine: GameEngine = new GameEngine();
-    private playerLifecycleService: PlayerLifecycleService = new PlayerLifecycleService(this);
+    playerService: GameSessionPlayerService = new GameSessionPlayerService();
     private readonly reconnectionTimeouts: Map<string, NodeJS.Timeout> = new Map(); // Attributes to track reconnection timeouts
     private gameSessionState: 'sessionCreated' | 'exchangeInfo' | 'inGame' | 'ended' = 'sessionCreated';
+    private logger = createScopedLogger('ExperimentalGameSession');
 
     get playersUUIDs(): string[] {
-        return this.playerLifecycleService.getAllPlayerUUIDs();
+        return this.playerService.getAllPlayerUUIDs();
     }
 
     get isSessionEnded() {
@@ -20,9 +22,11 @@ export class ExperimentalGameSession implements GameEngineDelegate, PlayerLifecy
     }
 
     constructor(players: Player[]) {
+        this.playerService.setDelegate(this);
+
         // Initialize the game session with the provided players
         for (const player of players) {
-            this.playerLifecycleService.addPlayer(player);
+            this.playerService.addPlayer(player);
             this.messagingService.registerPlayerSocket(player.uuid, player.socket);
         }
 
@@ -41,6 +45,8 @@ export class ExperimentalGameSession implements GameEngineDelegate, PlayerLifecy
         });
         this.gameEngine.setDelegate(this);
 
+        this.logger.info(`Creating new game session with players: ${players.map(player => player.uuid)}`);
+
         // Send each-other's usernames
         this.sendMetaData();
     }
@@ -49,28 +55,21 @@ export class ExperimentalGameSession implements GameEngineDelegate, PlayerLifecy
         this.gameSessionState = 'exchangeInfo';
 
         // Directly get all usernames
-        const allUsernames = this.playerLifecycleService.getAllUsernames();
+        const allUsernames = this.playerService.getAllUsernames();
 
         // Iterate over all players
-        this.playerLifecycleService.forEachPlayer(currentPlayer => {
-            // Exclude the current player's username from the list of opponents
-            const opponentsUsernames = allUsernames.filter(username => username !== currentPlayer.username);
-
-            // Send opponentsUsernames to the current player
-            this.messagingService.publish(
-                'metaData',
-                { opponentsUsernames: opponentsUsernames },
-                currentPlayer.uuid
-            );
+        this.playerService.forEachPlayer((playerUUID, username) => {
+            const opponentUsernames = allUsernames.filter(name => name !== username);
+            this.messagingService.publish('opponentUsernames', opponentUsernames, playerUUID);
         });
     }
 
     public playerAckToStart(playerUuid: string): void {
         // Mark the player as ready. Here, you'd track readiness in a map or similar structure.
-        this.playerLifecycleService.setPlayerReady(playerUuid, true);
+        this.playerService.setPlayerReady(playerUuid, true);
 
         // Check if all players are ready
-        if (this.playerLifecycleService.isAllPlayersReady()) {
+        if (this.playerService.isAllPlayersReady()) {
             this.startCountdown();
         }
     }
@@ -141,7 +140,7 @@ export class ExperimentalGameSession implements GameEngineDelegate, PlayerLifecy
             'all'
         );
 
-        console.log(`New round started. Grid and timer sent.`);
+        this.logger.info(`Round ${roundData.roundNumber} started`);
     }
 
     private notifyPlayersIntermission(round: RoundData): void {
@@ -161,14 +160,15 @@ export class ExperimentalGameSession implements GameEngineDelegate, PlayerLifecy
         round.winner = winnerUuid;
 
         // Notify each player with their personalized end round summary
-        this.playerService.forEachPlayer(player => {
-            const playerData = round.playerData.get(player.uuid);
+        this.playerService.forEachPlayer((uuid, username) => {
+            const playerData = round.playerData.get(uuid);
             const playerScore = playerData ? playerData.score : 0;
+            const playerUUID = uuid as PlayerUUID;
 
             // Calculate the total score of all opponents for comparison
             let opponentScoreTotal = 0;
             round.playerData.forEach((data, uuid) => {
-                if (uuid !== player.uuid) {
+                if (uuid !== playerUUID) {
                     opponentScoreTotal += data.score;
                 }
             });
@@ -184,7 +184,7 @@ export class ExperimentalGameSession implements GameEngineDelegate, PlayerLifecy
             this.messagingService.publish(
                 'endRound',
                 endRoundPayload,
-                player.uuid
+                playerUUID
             );
         });
     }
@@ -200,7 +200,7 @@ export class ExperimentalGameSession implements GameEngineDelegate, PlayerLifecy
         // Send the game end message to all players
         this.messagingService.publish('gameEnd', gameEndPayload, 'all');
 
-        console.log(`Game ended. Winner: ${winner}`);
+        this.logger.info(`Game ended. Winner: ${winner}`);
     }
 
     private notifyScoreToOpponent(playerUuid: string, score: number) {
@@ -222,21 +222,23 @@ export class ExperimentalGameSession implements GameEngineDelegate, PlayerLifecy
     //           PlayerLifeCycle delegates          //
     //////////////////////////////////////////////////
     onPlayerReady(playerUUID: string): void {
-        if (this.playerLifecycleService.isAllPlayersReady()) {
+        if (this.playerService.isAllPlayersReady()) {
             this.startCountdown();
         }
     }
+    // TODO: REVISE RELATIONSHIP BETWEEN GAMESESSION AND PLAYERLIFECYCLE
     onPlayerDisconnected(playerUUID: string): void {
         // Set a timeout for player reconnection
         const reconnectionTimeout = setTimeout(() => {
             // Handle the case where the player does not reconnect in time
-            console.log(`Player ${playerUUID} did not reconnect in time.`);
+            this.logger.info(`Player ${playerUUID} did not reconnect in time.`);
             this.endGameDueToDisconnection(playerUUID);
         }, 10000); // Wait for 10 seconds
 
         // Store the timeout so it can be cleared upon successful reconnection
         this.reconnectionTimeouts.set(playerUUID, reconnectionTimeout);
     }
+
     onPlayerReconnected(playerUUID: string, newSocket: WebSocket): void {
         // Clear any reconnection timeout
         const timeout = this.reconnectionTimeouts.get(playerUUID);
@@ -254,13 +256,13 @@ export class ExperimentalGameSession implements GameEngineDelegate, PlayerLifecy
     //////////////////////////////////////////////////
 
     private endGameDueToDisconnection(playerUuid: string) {
-        console.log(`Game ended due to player ${playerUuid} not reconnecting in time.`);
+        this.logger.info(`Ending game due to disconnection of player ${playerUuid}`);
 
         // End the game and notify the other player of the disconnection
         const gameEndPayload = {
             // Declare the other player as the winner
             // TODO: You might want to handle this differently
-            winner: playerUuid ? this.playerLifecycleService.getAllPlayerUUIDs().find(uuid => uuid !== playerUuid) : undefined,
+            winner: playerUuid ? this.playerService.getAllPlayerUUIDs().find(uuid => uuid !== playerUuid) : undefined,
             rounds: this.gameEngine.getRounds()
         };
 

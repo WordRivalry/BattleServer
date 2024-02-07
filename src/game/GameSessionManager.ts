@@ -1,12 +1,13 @@
 import {WebSocket} from 'ws';
 import {ExperimentalGameSession} from "./gameSession/ExperimentalGameSession";
-import {PlayerInfo} from "./ExperimentalPlayerService";
-
+import {Player} from "./gameSession/GameSessionPlayerService";
+import {createScopedLogger} from "../logger/Logger";
 
 export class GameSessionManager {
     private gameSessions: Map<string, ExperimentalGameSession> = new Map(); // Map player UUID to GameSession
+    private logger = createScopedLogger('GameSessionManager');
 
-    public startNewGame(players: PlayerInfo[]) {
+    public startNewGame(players: Player[]) {
         const newGameSession = new ExperimentalGameSession(players);
         for (const player of players) {
             this.gameSessions.set(player.uuid, newGameSession);
@@ -28,34 +29,34 @@ export class GameSessionManager {
                 this.gameSessions.delete(uuid);
             }
 
-            console.log(`Game session has been concluded and removed.`);
+            this.logger.info(`Game session ended for players: ${gameSession.playersUUIDs}`);
         } else {
-            console.log(`No active game session found for player UUID: ${playerUuid}.`);
+            this.logger.warn(`No active game session found for player ${playerUuid} to end.`);
         }
     }
 
     public handleReconnection(playerUuid: string, newSocket: WebSocket) {
         const gameSession = this.getGameSession(playerUuid);
         if (gameSession) {
-            gameSession.handlePlayerReconnection(playerUuid, newSocket);
-            console.log(`Handled reconnection for player ${playerUuid}`);
+            gameSession.playerService.handleReconnection(playerUuid, newSocket);
+            this.logger.info(`Handled reconnection for player ${playerUuid}`);
         } else {
-            console.log(`No active game session found for player ${playerUuid} to reconnect.`);
+            this.logger.warn(`No active game session found for player ${playerUuid} to reconnect.`);
         }
     }
 
     public handlePlayerDisconnection(playerUuid: string) {
         const gameSession = this.getGameSession(playerUuid);
         if (gameSession) {
-            gameSession.handlePlayerDisconnection(playerUuid);
-            console.log(`Handled disconnection for player ${playerUuid}`);
+            gameSession.playerService.handleDisconnection(playerUuid);
+            this.logger.info(`Handled disconnection for player ${playerUuid}`);
 
             // End the game if gameSession is ended
             if (gameSession.isSessionEnded) {
                 this.endGame(playerUuid);
             }
         } else {
-            console.log(`No active game session found for player ${playerUuid} to disconnect.`);
+            this.logger.warn(`No active game session found for player ${playerUuid} to disconnect.`);
         }
     }
 }

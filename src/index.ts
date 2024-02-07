@@ -1,10 +1,11 @@
 import {createServer} from 'http';
 import express from 'express';
 import {Server as WebSocketServer, WebSocket} from 'ws'; // Correct import from 'ws'
-import QueueService from './game/QueueService';
 import MatchmakingService from './game/MatchmakingService';
 import {GameSessionManager} from "./game/GameSessionManager";
-import {ExperimentalPlayerLifecycleService, PlayerState} from "./game/ExperimentalPlayerService";
+import {createScopedLogger} from "./logger/Logger";
+
+const logger = createScopedLogger('index.ts');
 
 // Initialize the Express application
 const app = express();
@@ -14,7 +15,7 @@ const server = createServer(app);
 
 // API key validation logic
 server.on('upgrade', (request, socket, head) => {
-    console.log('Upgrading...');
+    logger.info('Upgrade request received');
 
     // Extract API key from headers
     const apiKey = request.headers['x-api-key'] as string | undefined;
@@ -39,13 +40,10 @@ const isValidApiKey = (apiKey: string | undefined): boolean => {
 // Initialize a WebSocket server on top of the HTTP server
 const wss = new WebSocketServer({ noServer: true });
 
-// Instantiate services
-const playerService = new ExperimentalPlayerLifecycleService();
+// Instantiate services used for matchmaking and game logic
 const gameSessionManager = new GameSessionManager();
-const matchmakingService = new MatchmakingService(
-    gameSessionManager,
-    playerService
-);
+const matchmakingService = new MatchmakingService(gameSessionManager);
+
 
 // Define the root endpoint for simple HTTP GET requests
 app.get('/', (req, res) => {
@@ -69,80 +67,89 @@ wss.on('connection', (ws) => {
             } else if (playerUUID && playerUsername) {
                 switch (action.type) {
                     case 'findMatch':
-                        console.log(`Player ${playerUUID} is searching for a match`);
-                        playerService.updatePlayerState(playerUUID, PlayerState.InQueue);
+                        logger.info(`Player ${playerUUID} is searching for a match`);
+                        matchmakingService.addPlayerToQueue({ uuid: playerUUID, username: playerUsername, socket: ws });
                         break;
                     case 'stopFindMatch':
-                        console.log(`Player ${playerUUID} stopped searching for a match`);
-                        playerService.updatePlayerState(playerUUID, PlayerState.Idle);
+                        logger.info(`Player ${playerUUID} stopped searching for a match`);
+                        // TODO: RACE - Handle case where player is not in queue anymore
+                        matchmakingService.removePlayerFromQueue(playerUUID);
                         break;
                     case 'ackStartGame':
-                        console.log(`Player ${playerUUID} acknowledged game start`);
-                        playerService.updatePlayerState(playerUUID, PlayerState.IsReady);
+                        logger.info(`Player ${playerUUID} acknowledged the start of the game`);
+                        gameSessionManager.getGameSession(playerUUID)?.playerAckToStart(playerUUID);
                         break;
                     case 'scoreUpdate':
                         const { wordPath } = action;
-                        console.log(`Score update from ${playerUUID}:`, action);
+                        logger.info(`Player ${playerUUID} submitted a word path: ${wordPath}`);
                         gameSessionManager.getGameSession(playerUUID)?.updateScore(playerUUID, wordPath);
                         break;
                     default:
-                        console.log(`Unknown action type: ${action.type}`);
+                        logger.warn(`Unknown action type: ${action.type}`);
+                        break;
                 }
             }
         } catch (error) {
-            console.error('Failed to parse JSON:', error);
+            logger.error('Error parsing message:', error);
             ws.close(1007, 'Invalid JSON');
         }
     });
 
     // In WebSocket server connection event
     ws.on('close', () => {
+        logger.info(`WebSocket connection closed for user ${playerUUID}`);
         if (playerUUID) {
-            console.log(`Player disconnected: ${playerUUID}`);
-            playerService.handleDisconnection(playerUUID);
+            if (matchmakingService.isPlayerInQueue(playerUUID)) {
+                matchmakingService.removePlayerFromQueue(playerUUID);
+            } else if (gameSessionManager.getGameSession(playerUUID)) {
+                gameSessionManager.handlePlayerDisconnection(playerUUID);
+            } else {
+                logger.warn(`Player ${playerUUID} was not found in the queue or in an active game session`);
+            }
         }
     });
 
     ws.on('error', (error) => {
-        console.error(`WebSocket error for user ${playerUUID}:`, error);
+        logger.error('WebSocket error:', error);
     });
 
     ws.on('pong', () => {
-        console.log(`Pong received from ${playerUUID}`);
+        logger.info(`Received a pong from user ${playerUUID}`);
         // Here, you can update some kind of "last seen" timestamp for the client
-
     });
 
     function handleHandshake(action: any, ws: WebSocket) {
         const { uuid, username, reconnecting: isReconnecting } = action;
 
         playerUUID = uuid;
-        console.log(`Player UUID set: ${playerUUID}`);
-
         playerUsername = username;
-        console.log(`Player username set: ${username}`);
 
         if (isReconnecting) {
-            console.log(`Reconnection attempt by player: ${uuid}`);
-            playerService.handleReconnection(uuid, ws);
+            logger.info(`Player ${uuid} is reconnecting`);
+
+            if (gameSessionManager.getGameSession(uuid)) {
+                logger.info(`Player ${uuid} is in an active game session`);
+                gameSessionManager.handleReconnection(uuid, ws);
+            }
+
         } else {
-            console.log('New player connected...');
-            playerService.addPlayer(uuid, username, ws);
+            logger.info(`Player ${uuid} connected with username: ${username}`);
+            // Additional logic for new connections
         }
     }
 });
 
 // Define the port number from the environment or use 8080 as a fallback
 const PORT = process.env.PORT || 8080;
-server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+server.listen(PORT, () => logger.info(`Server is listening on port ${PORT}`));
 
 function shutdown() {
-    console.log('Shutting down server...');
+    logger.info('Shutting down server');
     wss.clients.forEach((client) => {
         client.close(1001, 'Server is shutting down');
     });
     server.close(() => {
-        console.log('Server shut down complete');
+        logger.info('Server has been shut down');
     });
 }
 

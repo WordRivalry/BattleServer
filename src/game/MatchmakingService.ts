@@ -1,43 +1,31 @@
-import QueueService from './QueueService';
 import {GameSessionManager} from "./GameSessionManager";
-import {
-    ExperimentalPlayerLifecycleService,
-    PlayerInfo,
-    PlayerLifecycleEvents,
-    PlayerState
-} from "./ExperimentalPlayerService";
+import {Player} from "./gameSession/GameSessionPlayerService";
+import {createScopedLogger} from "../logger/Logger";
+
+
 class MatchmakingService {
     private queueService: QueueService;
     private gameSessionManager: GameSessionManager; // Ref
-    private playerService: ExperimentalPlayerLifecycleService; // Ref
+    private logger = createScopedLogger('MatchmakingService');
 
     constructor(
-        gameSessionManager: GameSessionManager,
-        playerLifecycleService: ExperimentalPlayerLifecycleService
+        gameSessionManager: GameSessionManager
     ) {
         this.queueService = new QueueService();
         this.gameSessionManager = gameSessionManager;
-        this.playerService = playerLifecycleService;
-
-        this.setupEventListeners();
     }
 
-    private setupEventListeners() {
-        this.playerService.events.on(PlayerLifecycleEvents.PLAYER_STATE_CHANGED(PlayerState.InQueue), (player: PlayerInfo) => {
-            this.queueService.addPlayer(player);
-            this.findMatches();
-        });
-
-        this.playerService.events.on(PlayerLifecycleEvents.PLAYER_DISCONNECTED, (playerUUID: string) => {
-            this.handlePlayerDisconnection(playerUUID);
-        });
+    public addPlayerToQueue(player: Player) {
+        this.queueService.addPlayer(player);
+        this.findMatches();
     }
 
-    private handlePlayerDisconnection(playerUUID: string) {
-        if (this.queueService.isPlayerInQueue(playerUUID)) {
-            this.queueService.removePlayer(playerUUID);
-            console.log(`Removed disconnected player ${playerUUID} from queue.`);
-        }
+    public removePlayerFromQueue(playerUUID: string) {
+        this.queueService.removePlayer(playerUUID);
+    }
+
+    public isPlayerInQueue(playerUUID: string): boolean {
+        return this.queueService.isPlayerInQueue(playerUUID);
     }
 
     public findMatches() {
@@ -51,10 +39,55 @@ class MatchmakingService {
             this.queueService.removePlayer(player1.uuid);
             this.queueService.removePlayer(player2.uuid);
 
+            this.logger.info(`Match found between ${player1.uuid} and ${player2.uuid}`);
+
             // Pass matched players to RankGameService
             this.gameSessionManager.startNewGame([player1, player2]);
         }
     }
 }
+
+class QueueService {
+    private queue: Player[] = [];
+    private logger = createScopedLogger('QueueService');
+
+    public addPlayer( player: Player) {
+        // Guard clause to prevent duplicate players in the queue
+        if (this.queue.some(p => p.uuid === player.uuid)) {
+            this.logger.warn(`Player ${player.uuid} is already in the queue.`);
+            return;
+        }
+
+        this.queue.push(player);
+        this.logger.info(`Player ${player.uuid} added to queue.`);
+    }
+
+    public removePlayer(uuid: string) {
+        this.queue = this.queue.filter(player => player.uuid !== uuid);
+        this.logger.info(`Player ${uuid} removed from queue.`);
+    }
+
+    public getQueue(): Player[] {
+        return this.queue;
+    }
+
+    public clearQueue() {
+        this.queue = [];
+        this.logger.info('Queue cleared.');
+    }
+
+    public queueLength(): number {
+        return this.queue.length;
+    }
+
+    public getPlayers(): Player[] {
+        return this.queue;
+    }
+
+    public isPlayerInQueue(uuid: string): boolean {
+        return this.queue.some(player => player.uuid === uuid);
+    }
+}
+
 
 export default MatchmakingService

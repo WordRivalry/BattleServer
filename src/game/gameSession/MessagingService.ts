@@ -1,6 +1,7 @@
 import WebSocket from 'ws';
 import {PlayerUUID} from "./GameEngine";
 import { v4 as uuidv4 } from 'uuid';
+import {createScopedLogger} from "../../logger/Logger";
 
 export type Recipient = 'all' | PlayerUUID | PlayerUUID[];
 
@@ -16,6 +17,7 @@ export class MessagingService {
     private messages: GameMessage[] = [];
     private playerLastSeen: Map<string, number> = new Map(); // Maps player UUID to last message timestamp
     private playerSockets: Map<string, WebSocket> = new Map();
+    private logger = createScopedLogger('MessagingService');
 
     public publish(type: string, payload: any, recipient: Recipient): void {
         const message: GameMessage = {
@@ -72,10 +74,13 @@ export class MessagingService {
 
     private deliverMessage(message: GameMessage) {
         if (message.recipient === 'all') {
+            this.logger.info(`Delivering message to all players: ${message.type}`);
             this.notifyAllPlayers(message);
         } else if (Array.isArray(message.recipient)) {
+            this.logger.info(`Delivering message to multiple players: ${message.type}`);
             message.recipient.forEach(uuid => this.notifyPlayer(uuid, message));
         } else {
+            this.logger.info(`Delivering message to player: ${message.type}`);
             this.notifyPlayer(message.recipient, message);
         }
     }

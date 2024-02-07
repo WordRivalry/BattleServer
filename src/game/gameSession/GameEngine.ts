@@ -2,6 +2,7 @@
 
 import {CompleteCallback, GameClock, TickCallback} from './GameClock';
 import {LetterGrid, LetterTile} from "../LetterGrid";
+import {createScopedLogger} from "../../logger/Logger";
 
 export type Timestamp = number;
 export type Row = number;
@@ -49,7 +50,7 @@ export class GameEngine {
     private rounds: RoundData[] = [];
     private currentRoundIndex: number = -1;
     private delegate?: GameEngineDelegate;
-    private config: {
+    private readonly config: {
         roundDuration: number;
         intermissionDuration: number;
         gridSize: number;
@@ -60,18 +61,23 @@ export class GameEngine {
         roundWinnerDeterminator?: (round: RoundData) => Winner;
     };
 
+    private logger = createScopedLogger('GameEngine');
+
     constructor() {
         // Initial configuration
         this.config = {
             roundDuration: 360,
             intermissionDuration: 0,
             gridSize: 5,
-            wordScoreCalculator: this.defaultWordScoreCalculator,
-            gridGenerator: this.defaultGridGenerator,
-            checkGameOver: this.defaultCheckGameOver,
-            gameWinnerDeterminator: this.defaultGameWinnerDeterminator,
-            roundWinnerDeterminator: this.defaultRoundWinnerDeterminator,
+            wordScoreCalculator: this.defaultWordScoreCalculator.bind(this),
+            gridGenerator: this.defaultGridGenerator.bind(this),
+            checkGameOver: this.defaultCheckGameOver.bind(this),
+            gameWinnerDeterminator: this.defaultGameWinnerDeterminator.bind(this),
+            roundWinnerDeterminator: this.defaultRoundWinnerDeterminator.bind(this),
         };
+
+        // Logger + configuration
+        this.logger.info(`Game engine initialized with ${this.config}`);
 
         this.setState('preGame')
     }
@@ -414,7 +420,7 @@ export class GameEngine {
         const letterTiles: LetterTile[] = [];
 
         if (!Array.isArray(path) || path.some(part => !Array.isArray(part) || part.length !== 2)) {
-            console.error(`Invalid path format: `, path);
+            this.logger.error('Invalid path format');
             return [];
         }
 
@@ -425,7 +431,7 @@ export class GameEngine {
                 letterTiles.push(tile);
             } else {
                 // Optionally handle or log an error if the path contains invalid coordinates
-                console.error(`Invalid path coordinates: (${row}, ${col})`);
+                this.logger.error(`Invalid path coordinates: [${row}, ${col}]`);
             }
         }
         return letterTiles;

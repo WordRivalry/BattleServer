@@ -1,3 +1,5 @@
+import {createScopedLogger} from "../../logger/Logger";
+
 export type TickCallback = (remainingTime: number) => void;
 export type CompleteCallback = () => void;
 
@@ -8,6 +10,7 @@ export class GameClock {
     private remaining: number;
     private timerId: NodeJS.Timeout | null = null;
     private startTime: number = 0;
+    private logger = createScopedLogger('GameClock');
 
     constructor(duration: number, onTick: TickCallback, onComplete: CompleteCallback) {
         this.duration = duration;
@@ -18,8 +21,7 @@ export class GameClock {
 
     start(): void {
         this.startTime = Date.now();
-        console.log('Start time:', this.startTime);
-        console.log('Duration:', this.duration / 1000, 'seconds')
+        this.logger.debug(`Starting clock with duration ${this.duration / 1000} seconds`);
         this.timerId = setInterval(() => {
             const elapsed = Date.now() - this.startTime;
             this.remaining = Math.max(this.duration - elapsed, 0);
