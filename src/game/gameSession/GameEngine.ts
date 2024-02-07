@@ -1,7 +1,7 @@
 // GameFlowManager.ts
 
 import {CompleteCallback, GameClock, TickCallback} from './GameClock';
-import {LetterGrid, LetterTile} from "../LetterGrid";
+import {LetterGrid, LetterTile} from "./LetterGrid";
 import {createScopedLogger} from "../../logger/Logger";
 
 export type Timestamp = number;

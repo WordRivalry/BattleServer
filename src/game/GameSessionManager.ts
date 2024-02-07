@@ -1,20 +1,20 @@
 import {WebSocket} from 'ws';
-import {ExperimentalGameSession} from "./gameSession/ExperimentalGameSession";
+import {GameSession} from "./gameSession/GameSession";
 import {Player} from "./gameSession/GameSessionPlayerService";
 import {createScopedLogger} from "../logger/Logger";
 
 export class GameSessionManager {
-    private gameSessions: Map<string, ExperimentalGameSession> = new Map(); // Map player UUID to GameSession
+    private gameSessions: Map<string, GameSession> = new Map(); // Map player UUID to GameSession
     private logger = createScopedLogger('GameSessionManager');
 
     public startNewGame(players: Player[]) {
-        const newGameSession = new ExperimentalGameSession(players);
+        const newGameSession = new GameSession(players);
         for (const player of players) {
             this.gameSessions.set(player.uuid, newGameSession);
         }
     }
 
-    public getGameSession(playerUuid: string): ExperimentalGameSession | undefined {
+    public getGameSession(playerUuid: string): GameSession | undefined {
         return this.gameSessions.get(playerUuid);
     }
 

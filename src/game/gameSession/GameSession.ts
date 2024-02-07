@@ -5,7 +5,7 @@ import {MessagingService} from "./MessagingService";
 import {Player, GameSessionPlayerDelegate, GameSessionPlayerService} from "./GameSessionPlayerService";
 import {createScopedLogger} from "../../logger/Logger";
 
-export class ExperimentalGameSession implements GameEngineDelegate, GameSessionPlayerDelegate {
+export class GameSession implements GameEngineDelegate, GameSessionPlayerDelegate {
     private readonly messagingService: MessagingService = new MessagingService();
     private readonly gameEngine: GameEngine = new GameEngine();
     playerService: GameSessionPlayerService = new GameSessionPlayerService();
