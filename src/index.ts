@@ -4,6 +4,7 @@ import {Server as WebSocketServer, WebSocket} from 'ws'; // Correct import from 
 import MatchmakingService from './game/MatchmakingService';
 import {GameSessionManager} from "./game/GameSessionManager";
 import {createScopedLogger} from "./logger/Logger";
+import {Player} from "./game/gameSession/GameSessionPlayerService";
 
 const logger = createScopedLogger('index.ts');
 
@@ -52,10 +53,8 @@ app.get('/', (req, res) => {
 
 // Listen for new connections to the WebSocket server
 wss.on('connection', (ws) => {
-
-    // Initially, we don't have the player's UUID or username.
-    let playerUUID: string | undefined = undefined;
-    let playerUsername: string | undefined  = undefined;
+    // Initially undefined, but will be set after the handshake
+    let player: Player | undefined = undefined;
 
     // Event listener for messages from the client
     ws.on('message', (message) => {
@@ -64,28 +63,26 @@ wss.on('connection', (ws) => {
 
             if (action.type === 'handshake') {
                 handleHandshake(action, ws);
-            } else if (playerUUID && playerUsername) {
+            } else if (player) {
                 switch (action.type) {
                     case 'findMatch':
-                        logger.info(`Player ${playerUUID} is searching for a match`);
-                        matchmakingService.addPlayerToQueue({ uuid: playerUUID, username: playerUsername, socket: ws });
+                        logger.debug('Searching for a match', { playerUUID: player.uuid });
+                        matchmakingService.addPlayerToQueue(player);
                         break;
                     case 'stopFindMatch':
-                        logger.info(`Player ${playerUUID} stopped searching for a match`);
+                        logger.debug('Stopped searching for a match', { playerUUID: player.uuid });
                         // TODO: RACE - Handle case where player is not in queue anymore
-                        matchmakingService.removePlayerFromQueue(playerUUID);
-                        break;
-                    case 'ackStartGame':
-                        logger.info(`Player ${playerUUID} acknowledged the start of the game`);
-                        gameSessionManager.getGameSession(playerUUID)?.playerAckToStart(playerUUID);
+                        matchmakingService.removePlayerFromQueue(player.uuid);
                         break;
                     case 'scoreUpdate':
                         const { wordPath } = action;
-                        logger.info(`Player ${playerUUID} submitted a word path: ${wordPath}`);
-                        gameSessionManager.getGameSession(playerUUID)?.updateScore(playerUUID, wordPath);
+                        logger.debug('Submitted a word', { playerUUID: player.uuid, wordPath });
+                        gameSessionManager.getGameSession(player.uuid)?.updateScore(player.uuid, wordPath);
                         break;
                     default:
-                        logger.warn(`Unknown action type: ${action.type}`);
+                        logger.warn('Unknown Action type', { playerUUID: player.uuid, actionType: action.type });
+                        // Disconnect the client if an unknown action type is received
+                        ws.close(1003, 'Teapot Error');
                         break;
                 }
             }
@@ -97,14 +94,14 @@ wss.on('connection', (ws) => {
 
     // In WebSocket server connection event
     ws.on('close', () => {
-        logger.info(`WebSocket connection closed for user ${playerUUID}`);
-        if (playerUUID) {
-            if (matchmakingService.isPlayerInQueue(playerUUID)) {
-                matchmakingService.removePlayerFromQueue(playerUUID);
-            } else if (gameSessionManager.getGameSession(playerUUID)) {
-                gameSessionManager.handlePlayerDisconnection(playerUUID);
+        logger.info('WebSocket connection closed for user', { playerUUID: player?.uuid });
+        if (player) {
+            if (matchmakingService.isPlayerInQueue(player.uuid)) {
+                matchmakingService.removePlayerFromQueue(player.uuid);
+            } else if (gameSessionManager.getGameSession(player.uuid)) {
+                gameSessionManager.handlePlayerDisconnection(player.uuid);
             } else {
-                logger.warn(`Player ${playerUUID} was not found in the queue or in an active game session`);
+                logger.warn('Player was not found in the queue or in an active game session', { playerUUID: player.uuid });
             }
         }
     });
@@ -114,26 +111,25 @@ wss.on('connection', (ws) => {
     });
 
     ws.on('pong', () => {
-        logger.info(`Received a pong from user ${playerUUID}`);
+        logger.info('Received a pong from user', { playerUUID: player?.uuid });
         // Here, you can update some kind of "last seen" timestamp for the client
     });
 
     function handleHandshake(action: any, ws: WebSocket) {
         const { uuid, username, reconnecting: isReconnecting } = action;
 
-        playerUUID = uuid;
-        playerUsername = username;
+        player = new Player(uuid, username, ws);
 
         if (isReconnecting) {
-            logger.info(`Player ${uuid} is reconnecting`);
+            logger.info('Player is reconnecting', { playerUUID: player.uuid });
 
             if (gameSessionManager.getGameSession(uuid)) {
-                logger.info(`Player ${uuid} is in an active game session`);
+                logger.info('Player is in an active game session', { playerUUID: player.uuid });
                 gameSessionManager.handleReconnection(uuid, ws);
             }
 
         } else {
-            logger.info(`Player ${uuid} connected with username: ${username}`);
+            logger.info('Player connected', { uuid, username });
             // Additional logic for new connections
         }
     }
@@ -141,7 +137,7 @@ wss.on('connection', (ws) => {
 
 // Define the port number from the environment or use 8080 as a fallback
 const PORT = process.env.PORT || 8080;
-server.listen(PORT, () => logger.info(`Server is listening on port ${PORT}`));
+server.listen(PORT, () => logger.info( 'Server is listening', { port: PORT }));
 
 function shutdown() {
     logger.info('Shutting down server');

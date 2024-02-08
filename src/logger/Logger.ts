@@ -1,47 +1,59 @@
-// scopedLogger.js
-import { Logger } from "./winston"; // Adjust the import path as needed
+import LoggerFactory from './winston';
 
-export class ScopedLogger {
-    constructor(private readonly scope: string) {}
+class ScopedLogger {
+    private readonly baseScope: string;
+    private logger: any;
 
-    debug(message: string): void {
-        Logger.debug(this.#format(message));
+    constructor(scope: string) {
+        this.baseScope = scope;
+        this.logger = LoggerFactory.createLogger(scope);
     }
 
-    info(message: string): void {
-        Logger.info(this.#format(message));
+    // Method to dynamically adjust the scope/context
+    context(context: string) {
+        const newScope = `${this.baseScope}:${context}`;
+        return {
+            debug: (message: string, meta = {}) => this.logger.debug({ message, scope: newScope, ...meta }),
+            info: (message: string, meta = {}) => this.logger.info({ message, scope: newScope, ...meta }),
+            warn: (message: string, meta = {}) => this.logger.warn({ message, scope: newScope, ...meta }),
+            error: (message: string, error?: any, meta = {}) => {
+                let errorMeta = {};
+                if (error && error instanceof Error) {
+                    errorMeta = { error: { message: error.message, stack: error.stack } };
+                }
+                this.logger.error({ message, scope: newScope, ...meta, ...errorMeta });
+            },
+        };
     }
 
-    warn(message: string): void {
-        Logger.warn(this.#format(message));
+    debug(message: string, meta = {}): void {
+        this.logger.debug({ message, scope: this.baseScope, ...meta });
     }
 
-    http(message: string): void {
-        Logger.http(this.#format(message));
+    info(message: string, meta = {}): void {
+        this.logger.info({ message, scope: this.baseScope, ...meta });
     }
 
-    error(message: string, error?: unknown): void {
-        Logger.error(this.#format(message), error);
+    warn(message: string, meta = {}): void {
+        this.logger.warn({ message, scope: this.baseScope, ...meta });
     }
 
-    fatal(message: string, error?: unknown): void {
-        Logger.error(this.#format(message), error);
+    http(message: string, meta = {}): void {
+        this.logger.http({ message, scope: this.baseScope, ...meta });
     }
 
-    #format(message: string): string {
-        const fixedWidthScope = this.#padScope(this.scope, 20); // Adjust width as needed
-        return `[${fixedWidthScope}] - ${message}`;
-    }
-
-    #padScope(scope: string, width: number): string {
-        // Abbreviate if length exceeds the width
-        if (scope.length > width) {
-            // cut short the end with a ...
-            scope = scope.slice(0, width - 1) + ".";
+    error(message: string, error?: any, meta = {}): void {
+        let errorMeta = {};
+        if (error && error instanceof Error) {
+            errorMeta = { error: { message: error.message, stack: error.stack } };
         }
 
-        // Right-align and ensure fixed width
-        return scope.padStart(width, " ").slice(-width);
+        this.logger.error({ message, scope: this.baseScope, ...meta, ...errorMeta });
+    }
+
+    fatal(message: string, error?: Error, meta = {}): void {
+        const errorMeta = error ? { error: { message: error.message, stack: error.stack } } : {};
+        this.logger.error({ message, scope: this.baseScope, ...meta, ...errorMeta });
     }
 }
 

@@ -1,56 +1,76 @@
-// logger.js
-import winston from "winston";
-import config from "../../config";
+// LoggerFactory.js
+import winston from 'winston';
+import { LoggingWinston } from '@google-cloud/logging-winston';
+import config from '../../config'; // Adjust the import path as needed
 
-// Environment-specific configurations
-const levels = {
-    error: 0,
-    warn: 1,
-    info: 2,
-    http: 3,
-    debug: 4
-};
+class LoggerFactory {
+    static loggers = new Map();
 
-const level = (): string => {
-    const env = config.nodeEnv;
-    const isDevelopment = env === "development";
-    return isDevelopment ? "debug" : "warn";
-};
+    static createLogger(name: string) {
+        // Check if logger already exists
+        if (this.loggers.has(name)) {
+            return this.loggers.get(name);
+        }
 
-// Define different formats for different environments
-const format = winston.format.combine(
-    winston.format.timestamp({ format: "YYYY-MM-DD HH:mm:ss" }),
-    winston.format.colorize({ all: true }),
-    winston.format.printf((info) => {
-        // TIMESTAMP LEVEL MESSAGE
-        const timestamp = info.timestamp.padEnd(19, " ");
+        // Define log levels
+        const levels = {
+            error: 0,
+            warn: 1,
+            info: 2,
+            http: 3,
+            debug: 4,
+        };
 
-        // CONVERT LEVEL TO UPPERCASE AND PAD
-        const ansiEscapeRegex = /(\u001b\[.*?m)/; // Regular expression for ANSI escape codes
-        const parts = info.level.split(ansiEscapeRegex); // Splitting based on ANSI codes
-        const upperCaseLevel = parts
-            .map((part) => {
-                // If the part is an ANSI code, return as is; otherwise, convert to uppercase
-                return ansiEscapeRegex.test(part) ? part : part.toUpperCase();
-            })
-            .join("")
-            .padEnd(15, " "); // Reassembling the string and padding it
+        // Determine the log level based on the environment
+        const level = config.nodeEnv === 'development' ? 'debug' : 'warn';
 
-        const message = info.message;
-        return `${timestamp} ${upperCaseLevel} ${message}`;
-    })
-);
+        // Define formatting based on the environment
+        const format = config.nodeEnv === 'development'
+            ? winston.format.combine(
+                winston.format.colorize(),
+                winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
+                winston.format.printf(({ timestamp, level, message, ...metadata }) => {
+                    const messageString = typeof message === 'object' ? JSON.stringify(message) : message;
+                    const metadataString = Object.keys(metadata).length ? ` ${JSON.stringify(metadata)}` : '';
+                    return `${timestamp} [${level}]: ${messageString}${metadataString}`;
+                })
+            )
+            : winston.format.combine(
+                winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
+                winston.format.errors({ stack: true }),
+                winston.format.json()
+            );
 
-// Transports define where your logs will be stored
-const transports = [
-    new winston.transports.Console()
-    // Add more transports (like file transports) as needed
-];
+        // Create and configure the logger
+        const logger = winston.createLogger({
+            level: level,
+            levels: levels,
+            format: format,
+            transports: [
+                config.nodeEnv === 'production'
+                    ? new LoggingWinston()
+                    : new winston.transports.Console(),
+            ],
+        });
 
-// Create the logger instance
-export const Logger = winston.createLogger({
-    level: level(),
-    levels,
-    format,
-    transports
-});
+        // Store the logger in the map
+        this.loggers.set(name, logger);
+        return logger;
+    }
+
+    static enableLogger(name: string) {
+        const logger = this.loggers.get(name);
+        if (logger) {
+            logger.level = 'debug';
+        }
+    }
+
+    static disableLogger(name: string) {
+        const logger = this.loggers.get(name);
+        if (logger) {
+            logger.level = 'silent'; // Or use 'none'
+        }
+    }
+}
+
+export default LoggerFactory;
