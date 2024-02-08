@@ -39,7 +39,10 @@ class MatchmakingService {
             this.queueService.removePlayer(player1.uuid);
             this.queueService.removePlayer(player2.uuid);
 
-            this.logger.info(`Match found between ${player1.uuid} and ${player2.uuid}`);
+            this.logger.context('findMatches').info('Match found', {
+                player1UUID: player1.uuid,
+                player2UUID: player2.uuid
+            });
 
             // Pass matched players to RankGameService
             this.gameSessionManager.startNewGame([player1, player2]);
@@ -54,17 +57,17 @@ class QueueService {
     public addPlayer( player: Player) {
         // Guard clause to prevent duplicate players in the queue
         if (this.queue.some(p => p.uuid === player.uuid)) {
-            this.logger.warn(`Player ${player.uuid} is already in the queue.`);
+            this.logger.context('addPlayer').warn('Player already in queue.', { playerUUID: player.uuid });
             return;
         }
 
         this.queue.push(player);
-        this.logger.info(`Player ${player.uuid} added to queue.`);
+        this.logger.context('addPlayer').debug(`Player added to queue.`, { playerUUID: player.uuid });
     }
 
     public removePlayer(uuid: string) {
         this.queue = this.queue.filter(player => player.uuid !== uuid);
-        this.logger.info(`Player ${uuid} removed from queue.`);
+        this.logger.context('removePlayer').debug(`Player removed from queue.`, { playerUUID: uuid });
     }
 
     public getQueue(): Player[] {
@@ -73,7 +76,6 @@ class QueueService {
 
     public clearQueue() {
         this.queue = [];
-        this.logger.info('Queue cleared.');
     }
 
     public queueLength(): number {

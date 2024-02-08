@@ -21,7 +21,7 @@ export class GameClock {
 
     start(): void {
         this.startTime = Date.now();
-        this.logger.debug(`Starting clock with duration ${this.duration / 1000} seconds`);
+        this.logger.context('start').debug('Starting clock with duration seconds', {duration: this.duration / 1000} );
         this.timerId = setInterval(() => {
             const elapsed = Date.now() - this.startTime;
             this.remaining = Math.max(this.duration - elapsed, 0);

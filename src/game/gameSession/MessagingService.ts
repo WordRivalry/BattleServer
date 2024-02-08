@@ -74,13 +74,13 @@ export class MessagingService {
 
     private deliverMessage(message: GameMessage) {
         if (message.recipient === 'all') {
-            this.logger.info(`Delivering message to all players: ${message.type}`);
+            this.logger.context('deliverMessage').debug('Delivering message to all players', {messageType: message.type});
             this.notifyAllPlayers(message);
         } else if (Array.isArray(message.recipient)) {
-            this.logger.info(`Delivering message to multiple players: ${message.type}`);
+            this.logger.context('deliverMessage').debug('Delivering message to multiple players', {messageType: message.type});
             message.recipient.forEach(uuid => this.notifyPlayer(uuid, message));
         } else {
-            this.logger.info(`Delivering message to player: ${message.type}`);
+            this.logger.context('deliverMessage').debug('Delivering message to player', {messageType: message.type});
             this.notifyPlayer(message.recipient, message);
         }
     }

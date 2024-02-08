@@ -10,17 +10,21 @@ export type Col = number;
 export type Path = [Row, Col][];
 
 export type PlayerUUID = string;
-export type Winner = PlayerUUID | 'tie';
 
 export interface PlayerRoundData {
     score: number;
     words: [Timestamp, Path][];
 }
 
+export type WinnerResult = {
+    status: 'singleWinner' | 'tie' | 'ranked';
+    winners: PlayerUUID[]; // In case of 'ranked', it contains UUIDs in ranked order. For 'tie', all tied player UUIDs.
+};
+
 export interface RoundData {
     roundNumber: number;
     playerData: Map<PlayerUUID, PlayerRoundData>;
-    winner: Winner | undefined; // Winner can be a PlayerUUID or 'tie'
+    winner: WinnerResult | undefined;
     grid: LetterGrid;
     startTime: number;
     duration: number;
@@ -32,15 +36,13 @@ export type GameEngineState = 'undefined' | 'preGame' | 'inRound' | 'intermissio
 
 export interface GameEngineDelegate {
     onRoundStart: (roundData: RoundData) => void;
-    onRoundEnd: (roundData: RoundData) => void;
     onScoreUpdate: (playerUuid: PlayerUUID, score: number) => void;
-    onGameEnd: (winner: Winner) => void;
+    onRoundEnd: (roundData: RoundData) => void;
+    // Called when the game ends
+    onGameEnd: (winner: WinnerResult) => void;
 
     // For real-time games, providing periodic time updates could be beneficial.
     onTimeUpdate: (remainingTime: number) => void;
-
-    // Called in the preGame state
-    onGameInitialize: () => void;
 }
 
 
@@ -57,8 +59,8 @@ export class GameEngine {
         wordScoreCalculator: (word: LetterTile[]) => number;
         gridGenerator: () => LetterGrid;
         checkGameOver: (rounds: RoundData[]) => boolean;
-        gameWinnerDeterminator: (rounds: RoundData[]) => Winner;
-        roundWinnerDeterminator?: (round: RoundData) => Winner;
+        gameWinnerDeterminator: (rounds: RoundData[]) => WinnerResult;
+        roundWinnerDeterminator?: (round: RoundData) => WinnerResult;
     };
 
     private logger = createScopedLogger('GameEngine');
@@ -77,7 +79,7 @@ export class GameEngine {
         };
 
         // Logger + configuration
-        this.logger.info(`Game engine initialized with ${this.config}`);
+        this.logger.debug(`Game engine initialized with ${this.config}`);
 
         this.setState('preGame')
     }
@@ -114,35 +116,25 @@ export class GameEngine {
     }
 
     public setWordScoreCalculator(calculator: (word: LetterTile[]) => number): void {
-        this.config.wordScoreCalculator = calculator;
+        this.config.wordScoreCalculator = calculator.bind(this);
     }
 
     public setGridGenerator(generator: () => LetterGrid): void {
-        this.config.gridGenerator = generator;
+        this.config.gridGenerator = generator.bind(this);
     }
 
     public setCheckGameOver(checker: (rounds: RoundData[]) => boolean): void {
-        this.config.checkGameOver = checker;
+        this.config.checkGameOver = checker.bind(this);
     }
 
-    public setWinnerDeterminator(determinator: (rounds: RoundData[]) => 'player1' | 'player2' | 'tie'): void {
-        this.config.gameWinnerDeterminator = determinator;
+    public setWinnerDeterminator(determinator: (rounds: RoundData[]) => WinnerResult): void {
+        this.config.gameWinnerDeterminator = determinator.bind(this);
     }
 
     public startGame(): void {
-        // Validate if the game can start
-        // Pre game checks
-
         if (this.currentState === 'preGame') {
             this.startRound();
         }
-    }
-
-    public endGame(): void {
-        this.setState('ended');
-        // engine clean up
-        this.gameClock?.pause();
-        this.gameClock = undefined;
     }
 
     private startRound(): void {
@@ -151,15 +143,8 @@ export class GameEngine {
             this.rounds.push(newRound);
             this.currentRoundIndex++;
             this.gameClock = new GameClock(this.config.roundDuration, this.onTick, this.onRoundComplete);
-            this.setState('inRound', newRound);
-            this.gameClock.start();
-        }
-    }
-
-    private startIntermission(): void {
-        if (this.currentState === 'inRound') {
-            this.gameClock = new GameClock(this.config.intermissionDuration, this.onTick, this.onIntermissionComplete);
-            this.setState('intermission', this.getCurrentRound());
+            this.delegate?.onRoundStart(newRound);
+            this.setState('inRound');
             this.gameClock.start();
         }
     }
@@ -169,32 +154,44 @@ export class GameEngine {
     };
 
     private onRoundComplete: CompleteCallback = (): void => {
-        this.config.checkGameOver(this.rounds) ? this.endGame() : this.startIntermission();
+        const currentRound = this.getCurrentRound();
+        if (currentRound) {
+            currentRound.winner = this.config.roundWinnerDeterminator!(currentRound);
+            this.delegate?.onRoundEnd(currentRound); // Notify delegate of round end and winner
+        }
+
+        if (this.config.checkGameOver(this.rounds)) {
+            this.endGame();
+        } else {
+            this.startIntermission();
+        }
     }
+
+    private startIntermission(): void {
+        if (this.currentState === 'inRound') {
+            this.gameClock = new GameClock(this.config.intermissionDuration, this.onTick, this.onIntermissionComplete);
+            this.setState('intermission');
+            this.gameClock.start();
+        }
+    };
 
     private onIntermissionComplete: CompleteCallback = (): void => {
         this.startRound();
+    };
+
+    public endGame(): void {
+        this.setState('ended');
+        // Engine clean-up
+        this.gameClock?.pause();
+        this.gameClock = undefined;
+
+        // Determine the game winner based on all rounds
+        const gameWinner = this.config.gameWinnerDeterminator(this.rounds);
+        this.delegate?.onGameEnd(gameWinner); // Notify delegate with the final winner
     }
 
-    private setState(newState: GameEngineState, roundData?: RoundData): void {
+    private setState(newState: GameEngineState): void {
         this.currentState = newState;
-
-        // Delegate callbacks
-        switch (newState) {
-            case 'preGame':
-                this.delegate?.onGameInitialize();
-                break;
-            case 'inRound':
-                if (roundData) this.delegate?.onRoundStart(roundData);
-                break;
-            case 'intermission':
-                if (roundData) this.delegate?.onRoundEnd(roundData);
-                break;
-            case 'ended':
-                const winner = this.config.gameWinnerDeterminator(this.rounds);
-                this.delegate?.onGameEnd(winner);
-                break;
-        }
     }
 
     public addWord(playerUuid: string, wordPath: Path): void {
@@ -211,8 +208,10 @@ export class GameEngine {
                 }
 
                 // Calculate and update the score
-                const momentumScore = this.calculateMomentumScore(playerUuid, baseScore, word);
-                playerData.score += momentumScore;
+                //const momentumScore = this.calculateMomentumScore(playerUuid, baseScore, word);
+                //playerData.score += momentumScore;
+
+                playerData.score += baseScore;
 
                 // Update the words
                 playerData.words.push([this.config.roundDuration - this.gameClock?.getRemainingTime(), wordPath]);
@@ -234,20 +233,27 @@ export class GameEngine {
         };
     }
 
+    /////////////////////////////
+    // Default implementations //
+    /////////////////////////////
+
     private defaultCheckGameOver(): boolean {
         const roundVictories = new Map<PlayerUUID, number>();
 
         this.rounds.forEach((round) => {
-            if (round.winner !== 'tie' && round.winner) {
-                roundVictories.set(round.winner, (roundVictories.get(round.winner) || 0) + 1);
+            const winners = round.winner;
+            if (winners && winners.status !== 'tie') { // ties do not contribute
+                winners.winners.forEach((winner) => {
+                    roundVictories.set(winner, (roundVictories.get(winner) || 0) + 1);
+                });
             }
         });
 
-        const totalRounds = this.rounds.length;
         let gameOver = false;
 
+        // Explicitly checking for 2 victories, suitable for "best of 3" format
         roundVictories.forEach((victories) => {
-            if (victories > totalRounds / 2) {
+            if (victories >= 2) {
                 gameOver = true;
             }
         });
@@ -255,56 +261,53 @@ export class GameEngine {
         return gameOver;
     }
 
-
-     defaultGameWinnerDeterminator(): Winner {
+    defaultGameWinnerDeterminator(): WinnerResult {
         const totalScores = new Map<PlayerUUID, number>();
 
         this.rounds.forEach((roundData) => {
             roundData.playerData.forEach((data, uuid) => {
-                if (!totalScores.has(uuid)) {
-                    totalScores.set(uuid, data.score);
-                } else {
-                    totalScores.set(uuid, totalScores.get(uuid)! + data.score);
-                }
+                totalScores.set(uuid, (totalScores.get(uuid) || 0) + data.score);
             });
         });
 
-        let highestScore = -1;
-        let potentialWinners: PlayerUUID[] = [];
-
-        totalScores.forEach((score, uuid) => {
-            if (score > highestScore) {
-                highestScore = score;
-                potentialWinners = [uuid];
-            } else if (score === highestScore) {
-                potentialWinners.push(uuid);
-            }
-        });
-
-        return potentialWinners.length === 1 ? potentialWinners[0] : 'tie';
+        return this.determineWinners(totalScores);
     }
 
-    defaultRoundWinnerDeterminator(round: RoundData): Winner {
+    defaultRoundWinnerDeterminator(round: RoundData): WinnerResult {
         const totalScores = new Map<PlayerUUID, number>();
+        round.playerData.forEach((data, uuid) => totalScores.set(uuid, data.score));
 
-        round.playerData.forEach((data, uuid) => {
-            totalScores.set(uuid, data.score);
-        });
-
-        let highestScore = -1;
-        let potentialWinners: PlayerUUID[] = [];
-
-        totalScores.forEach((score, uuid) => {
-            if (score > highestScore) {
-                highestScore = score;
-                potentialWinners = [uuid];
-            } else if (score === highestScore) {
-                potentialWinners.push(uuid);
-            }
-        });
-
-        return potentialWinners.length === 1 ? potentialWinners[0] : 'tie';
+        return this.determineWinners(totalScores);
     }
+
+    private determineWinners(scores: Map<PlayerUUID, number>): WinnerResult {
+        this.logger.context('determineWinners').debug('Scores', { scores });
+
+        if (scores.size === 0) {
+            // Handle case where no scores are present
+            this.logger.context('determineWinners').debug('No scores present');
+            return { status: 'tie', winners: [] }; // or consider a new status like 'noAction' if appropriate
+        }
+
+        let sortedScores = Array.from(scores.entries()).sort((a, b) => b[1] - a[1]);
+        this.logger.context('determineWinners').debug('sortedScores', { sortedScores });
+
+        // Default case for when scores exist but are tied for the top position
+        let result: WinnerResult = { status: 'singleWinner', winners: [sortedScores[0][0]] };
+
+        if (sortedScores.length > 1 && sortedScores[0][1] === sortedScores[1][1]) {
+            // Handle tie or ranked logic
+            let tieScores = sortedScores.filter(([uuid, score]) => score === sortedScores[0][1]);
+            if (tieScores.length === sortedScores.length) {
+                result = { status: 'tie', winners: tieScores.map(([uuid]) => uuid) };
+            } else {
+                result = { status: 'ranked', winners: sortedScores.map(([uuid]) => uuid) };
+            }
+        }
+
+        return result;
+    }
+
 
     private defaultWordScoreCalculator(word: LetterTile[]): number {
         let score = 0;
@@ -407,20 +410,15 @@ export class GameEngine {
         return baseScore * momentumBonus * veryFastMomentumBonus;
     }
 
-    private getPlayerScore(playerUuid: string): number {
-        return this.rounds[this.currentRoundIndex].playerData.get(playerUuid)?.score || 0;
-    }
-
     private getPlayerWords(playerUuid: string): [Timestamp, Path][] {
         return this.rounds[this.currentRoundIndex].playerData.get(playerUuid)?.words || [];
     }
-
 
     private getPathLetterTiles(path: Path, grid: LetterGrid): LetterTile[] {
         const letterTiles: LetterTile[] = [];
 
         if (!Array.isArray(path) || path.some(part => !Array.isArray(part) || part.length !== 2)) {
-            this.logger.error('Invalid path format');
+            this.logger.context('getPathLetterTiles').error('Invalid path format');
             return [];
         }
 
@@ -431,7 +429,7 @@ export class GameEngine {
                 letterTiles.push(tile);
             } else {
                 // Optionally handle or log an error if the path contains invalid coordinates
-                this.logger.error(`Invalid path coordinates: [${row}, ${col}]`);
+                this.logger.context('getPathLetterTiles').error('Invalid path coordinates', {row, col});
             }
         }
         return letterTiles;

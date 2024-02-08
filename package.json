@@ -8,6 +8,7 @@
     "start": "nodemon --exec ts-node src/index.ts"
   },
   "dependencies": {
+    "@google-cloud/logging-winston": "^6.0.0",
     "dotenv": "^16.4.1",
     "express": "^4.18.2",
     "ts-node": "^10.9.2",
