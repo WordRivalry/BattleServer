@@ -24,12 +24,13 @@ export class GameSession implements GameEngineDelegate, GameSessionPlayerDelegat
             this.playerService.addPlayer(player);
             this.messagingService.registerPlayerSocket(player.uuid, player.socket);
         }
+
         this.gameSessionUUID = gameSessionUUID;
         this.gameSessionCallback = gameSessionCallback;
 
         // Initialize the game engine
         this.gameEngine.setGridSize(4);
-        this.gameEngine.setRoundDuration(5000);
+        this.gameEngine.setRoundDuration(30000);
         this.gameEngine.setIntermissionDuration(5000);
 
         // Set the delegates

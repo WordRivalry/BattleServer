@@ -207,10 +207,6 @@ export class GameEngine {
                     this.rounds[this.currentRoundIndex].playerData.set(playerUuid, playerData);
                 }
 
-                // Calculate and update the score
-                //const momentumScore = this.calculateMomentumScore(playerUuid, baseScore, word);
-                //playerData.score += momentumScore;
-
                 playerData.score += baseScore;
 
                 // Update the words
@@ -308,19 +304,26 @@ export class GameEngine {
         return result;
     }
 
-
-    private defaultWordScoreCalculator(word: LetterTile[]): number {
+    defaultWordScoreCalculator(word: LetterTile[]): number {
         let score = 0;
+        let wordMultipliers = [];
+
         // Calculate base score for the word
         for (let letter of word) {
-            score += letter.value * letter.multiplierLetter
+            score += letter.value * letter.multiplierLetter;
+            if (letter.multiplierWord > 1) {
+                wordMultipliers.push(letter.multiplierWord);
+            }
         }
-        // Apply word multiplier if any
-        for (let letter of word) {
-            score *= letter.multiplierWord;
+
+        // Apply word multipliers if any
+        for (let wordMultiplier of wordMultipliers) {
+            score *= wordMultiplier;
         }
+
         return score;
     }
+
 
     private defaultGridGenerator(): LetterGrid {
         const grid: LetterGrid = [];

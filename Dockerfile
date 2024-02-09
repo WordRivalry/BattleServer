@@ -36,4 +36,4 @@ COPY --from=build /usr/src/app/package*.json ./
 COPY --from=build /usr/src/app/.env ./
 
 # The command to run when starting the container
-CMD ["node", "dist/index.js"]
+CMD ["node", "dist/src/index.js"]

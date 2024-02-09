@@ -4,7 +4,7 @@ build:
 
 docker-run:
 	# Run the docker image
-	docker run -p 3000:3000 --rm --name battleserver-container battleserver
+	docker run -p 8080:8080 --rm --name battleserver-container battleserver
 
 docker-tag:
 	# Tag the docker image
