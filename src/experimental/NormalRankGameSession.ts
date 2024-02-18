@@ -1,32 +1,29 @@
 import {WebSocket} from 'ws';
-import {GameEngine, GameEngineDelegate, Path, PlayerUUID, RoundData, WinnerResult} from "./GameEngine";
 import {clearInterval} from "timers";
-import {MessagingService} from "./MessagingService";
-import {GameSessionPlayerDelegate, GameSessionPlayerService, Player} from "./GameSessionPlayerService";
-import {createScopedLogger} from "../../logger/Logger";
-import {GameSessionCallback} from "../GameSessionManager";
+import {GameSession} from "./GameSession";
+import {GameEngine, GameEngineDelegate, RoundData, WinnerResult} from "../modules/gameEngine/GameEngine";
+import {createScopedLogger} from "../logger/logger";
+import {PlayerUUID} from "../types";
+import {PlayerMetadata} from "./GameSessionManager";
+import {Path} from "../modules/gameEngine/GameEngine";
 
-export class GameSession implements GameEngineDelegate, GameSessionPlayerDelegate {
-    private readonly messagingService: MessagingService = new MessagingService();
+export class NormalRankGameSession extends GameSession implements GameEngineDelegate {
     private readonly gameEngine: GameEngine = new GameEngine();
-    playerService: GameSessionPlayerService = new GameSessionPlayerService();
-    private logger = createScopedLogger('GameSession');
-    private gameSessionCallback: GameSessionCallback;
-    private readonly gameSessionUUID: string;
+    private NormalRankLogger = createScopedLogger('NormalRankGameSession');
 
-    get playersUUIDs(): string[] {
-        return this.playerService.getAllPlayerUUIDs();
-    }
+    constructor(
+        public uuid: string,
+        public playersMetadata: PlayerMetadata[],
+        public gameMode: string,
+        public modeType: string
+    ) {
 
-    constructor(players: Player[], gameSessionUUID: string, gameSessionCallback: GameSessionCallback) {
-        // Initialize the game session with the provided players
-        for (const player of players) {
-            this.playerService.addPlayer(player);
-            this.messagingService.registerPlayerSocket(player.uuid, player.socket);
-        }
-
-        this.gameSessionUUID = gameSessionUUID;
-        this.gameSessionCallback = gameSessionCallback;
+        super(
+            uuid,
+            playersMetadata,
+            gameMode,
+            modeType
+        );
 
         // Initialize the game engine
         this.gameEngine.setGridSize(4);
@@ -35,22 +32,20 @@ export class GameSession implements GameEngineDelegate, GameSessionPlayerDelegat
 
         // Set the delegates
         this.gameEngine.setDelegate(this);
-        this.playerService.setDelegate(this);
-
-        // Send the metadata and start the countdown
-        this.sendMetaData();
-        this.startCountdown();
     }
 
     private sendMetaData(): void {
-        const allUsernames = this.playerService.getAllUsernames();
-        this.playerService.forEachPlayer((playerUUID, username) => {
-            const opponentUsernames = allUsernames.filter(name => name !== username);
-            this.messagingService.publish('opponentUsernames', opponentUsernames, playerUUID);
+        const allUsernames = this.playersMetadata.map(player => player.username);
+        // Send usernames except the one who is receiving the message
+        this.playersMetadata.forEach((player, index) => {
+            const opponents = allUsernames.filter((_, i) => i !== index);
+            const payload = {opponentsUsername: opponents};
+            this.messagingService.publish('gameMetaData', payload, player.uuid);
         });
     }
 
     private startCountdown() {
+        this.hasStarted = true;
         let countdown = 3;
         const intervalId = setInterval(() => {
             // Send the countdown message to both players
@@ -85,7 +80,7 @@ export class GameSession implements GameEngineDelegate, GameSessionPlayerDelegat
         // Send the grid to all players
         this.messagingService.publish('roundStart', payload, 'all');
 
-        this.logger.context('notifyPlayersRoundStart').info('Round started', {round: roundData.roundNumber + 1, gameSessionUUID: this.gameSessionUUID});
+        this.NormalRankLogger.context('notifyPlayersRoundStart').info('Round started', {round: roundData.roundNumber + 1, gameSessionUUID: this.uuid});
     }
 
     onScoreUpdate(playerUuid: PlayerUUID, score: number): void {
@@ -95,9 +90,9 @@ export class GameSession implements GameEngineDelegate, GameSessionPlayerDelegat
         };
 
         // Broadcast the updated score to all players except the one who scored
-        this.messagingService.publish('opponentScoreUpdate', scoreUpdateMessage, this.playerService.getAllPlayerUUIDs().filter(uuid => uuid !== playerUuid));
+        this.messagingService.publish('opponentScoreUpdate', scoreUpdateMessage, this.playersMetadata.filter(player => player.uuid !== playerUuid).map(player => player.uuid));
 
-        this.logger.context('notifyPlayersScoreUpdate').info('Score updated', {playerUuid, newScore: score, gameSessionUUID: this.gameSessionUUID});
+        this.NormalRankLogger.context('notifyPlayersScoreUpdate').info('Score updated', {playerUuid, newScore: score, gameSessionUUID: this.uuid});
     }
 
     onRoundEnd(round: RoundData): void {
@@ -107,15 +102,15 @@ export class GameSession implements GameEngineDelegate, GameSessionPlayerDelegat
         if (round.winner) {
             winnerResult = round.winner;
         } else {
-            this.logger.context('notifyPlayersIntermission').warn('Winner result is not available', {gameSessionUUID: this.gameSessionUUID});
+            this.NormalRankLogger.context('notifyPlayersIntermission').warn('Winner result is not available', {gameSessionUUID: this.uuid});
             return;
         }
 
         // Notify each player with their personalized end round summary
-        this.playerService.forEachPlayer((uuid, username) => {
-            const playerData = round.playerData.get(uuid);
+        this.playersMetadata.forEach((metadata: PlayerMetadata) => {
+            const playerData = round.playerData.get(metadata.uuid);
             const playerScore = playerData ? playerData.score : 0;
-            const playerUUID = uuid as PlayerUUID;
+            const playerUUID = metadata.uuid as PlayerUUID;
 
             // Calculate the total score of all opponents for comparison
             let opponentScoreTotal = 0;
@@ -133,14 +128,14 @@ export class GameSession implements GameEngineDelegate, GameSessionPlayerDelegat
             // Adjust the payload based on the winner result
             switch (winnerResult.status) {
                 case 'singleWinner':
-                    endRoundPayload.winner = winnerResult.winners[0] === uuid ? 'You' : 'Opponent';
+                    endRoundPayload.winner = winnerResult.winners[0] === metadata.uuid ? 'You' : 'Opponent';
                     break;
                 case 'tie':
                     endRoundPayload.winner = 'tie';
                     break;
                 case 'ranked':
                     // If ranked, determine if the player is among the winners, and their rank
-                    const rank = winnerResult.winners.indexOf(uuid) + 1; // +1 to make it 1-indexed
+                    const rank = winnerResult.winners.indexOf(metadata.uuid) + 1; // +1 to make it 1-indexed
                     endRoundPayload.winner = rank > 0 ? `Rank ${rank}` : 'Not ranked';
                     break;
             }
@@ -157,8 +152,9 @@ export class GameSession implements GameEngineDelegate, GameSessionPlayerDelegat
 
         // Send the game end message to all players
         this.messagingService.publish('gameEnd', gameEndPayload, 'all');
-        this.logger.context('notifyPlayersGameEnd').debug('Game ended. Winner', {winner, gameSessionUUID: this.gameSessionUUID});
-        this.gameSessionCallback.onGameEnd(this.gameSessionUUID);
+        this.NormalRankLogger.context('notifyPlayersGameEnd').debug('Game ended. Winner', {winner, gameSessionUUID: this.uuid});
+        // Emit the game end event
+        this.emit('gameEnd', this.uuid);
     }
 
     onTimeUpdate(remainingTime: number): void {
@@ -166,26 +162,31 @@ export class GameSession implements GameEngineDelegate, GameSessionPlayerDelegat
     }
 
     //////////////////////////////////////////////////
-    //           PlayerLifeCycle delegates          //
+    //           Abstract methods          //
     //////////////////////////////////////////////////
-    onPlayerReconnected(playerUUID: string, newSocket: WebSocket): void {
-        this.logger.context('onPlayerReconnected').info('Player reconnected', {playerUUID, gameSessionUUID: this.gameSessionUUID});
-        this.messagingService.registerPlayerSocket(playerUUID, newSocket);
-        this.messagingService.handlePlayerReconnection(playerUUID);
+
+    override handlePlayerAction(playerUUID: string, action: any): void {
+        const round = this.gameEngine.getCurrentRound();
+        if (!round) return;
+        this.gameEngine.addWord(playerUUID, action.wordPath);
     }
 
-    onPlayerTimedOut(playerUuid: string) {
-        this.logger.context('endGameDueToDisconnection').info('Ending game due to disconnection of player', {playerUuid, gameSessionUUID: this.gameSessionUUID});
+    override handlePlayerLeaves(playerUUID: string): void {
+        this.NormalRankLogger.context('handlePlayerLeaves').info('Ending game due to player leaving', {playerUUID, gameSessionUUID: this.uuid});
 
         // End the game and notify the other player of the disconnection
         const gameEndPayload = {
-            // TODO: handle this differently
-            winner: playerUuid ? this.playerService.getAllPlayerUUIDs().find(uuid => uuid !== playerUuid) : undefined, rounds: this.gameEngine.getRounds()
+            winner: playerUUID ? this.playersMetadata.find(player => player.uuid !== playerUUID)?.uuid : undefined, rounds: this.gameEngine.getRounds()
         };
 
         // Send the game end message to all players
-        this.messagingService.publish('gameEndByDisconnection', gameEndPayload, 'all');
-
+        this.messagingService.publish('gameEndByPlayerLeft', gameEndPayload, 'all');
         this.gameEngine.endGame();
+    }
+
+    override startGame(): void {
+        // Send the metadata and start the countdown
+        this.sendMetaData();
+        this.startCountdown();
     }
 }

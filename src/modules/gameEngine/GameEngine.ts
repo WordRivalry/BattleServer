@@ -2,14 +2,12 @@
 
 import {CompleteCallback, GameClock, TickCallback} from './GameClock';
 import {LetterGrid, LetterTile} from "./LetterGrid";
-import {createScopedLogger} from "../../logger/Logger";
+import {createScopedLogger} from "../../logger/logger";
+import {PlayerUUID, Timestamp} from "../../types";
 
-export type Timestamp = number;
 export type Row = number;
 export type Col = number;
 export type Path = [Row, Col][];
-
-export type PlayerUUID = string;
 
 export interface PlayerRoundData {
     score: number;

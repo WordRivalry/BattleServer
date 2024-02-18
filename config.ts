@@ -4,7 +4,8 @@ dotenv.config();
 
 export default {
     nodeEnv: process.env.NODE_ENV || "development",
-  //  port: process.env.PORT || 3000,
+    upgradeApiKey: process.env.UPGRADE_API_KEY || "development",
+    port: process.env.PORT || 8080,
   //  corsEnabled: process.env.CORS_ENABLED || "true",
   //  apiPrefix: process.env.API_PREFIX || "api",
  //   appUrl: process.env.APP_URL || "http://localhost:3000",

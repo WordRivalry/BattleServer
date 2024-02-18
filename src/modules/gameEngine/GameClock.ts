@@ -1,4 +1,4 @@
-import {createScopedLogger} from "../../logger/Logger";
+import {createScopedLogger} from "../../logger/logger";
 
 export type TickCallback = (remainingTime: number) => void;
 export type CompleteCallback = () => void;
