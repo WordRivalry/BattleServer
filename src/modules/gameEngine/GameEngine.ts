@@ -4,6 +4,8 @@ import {CompleteCallback, GameClock, TickCallback} from './GameClock';
 import {LetterGrid, LetterTile} from "./LetterGrid";
 import {createScopedLogger} from "../../logger/logger";
 import {PlayerUUID, Timestamp} from "../../types";
+import axios from "axios";
+import config from "../../../config";
 
 export type Row = number;
 export type Col = number;
@@ -29,7 +31,6 @@ export interface RoundData {
     endTime?: number;
 }
 
-
 export type GameEngineState = 'undefined' | 'preGame' | 'inRound' | 'intermission' | 'ended';
 
 export interface GameEngineDelegate {
@@ -43,7 +44,6 @@ export interface GameEngineDelegate {
     onTimeUpdate: (remainingTime: number) => void;
 }
 
-
 export class GameEngine {
     private currentState: GameEngineState = 'undefined';
     private gameClock: GameClock | undefined;
@@ -55,7 +55,7 @@ export class GameEngine {
         intermissionDuration: number;
         gridSize: number;
         wordScoreCalculator: (word: LetterTile[]) => number;
-        gridGenerator: () => LetterGrid;
+        gridGenerator: () => LetterGrid | Promise<LetterGrid>;
         checkGameOver: (rounds: RoundData[]) => boolean;
         gameWinnerDeterminator: (rounds: RoundData[]) => WinnerResult;
         roundWinnerDeterminator?: (round: RoundData) => WinnerResult;
@@ -64,13 +64,17 @@ export class GameEngine {
     private logger = createScopedLogger('GameEngine');
 
     constructor() {
+
+        // If prod use fetchAndApplyMultipliers, else use defaultGridGenerator
+
+
         // Initial configuration
         this.config = {
             roundDuration: 360,
             intermissionDuration: 0,
             gridSize: 5,
             wordScoreCalculator: this.defaultWordScoreCalculator.bind(this),
-            gridGenerator: this.defaultGridGenerator.bind(this),
+            gridGenerator: config.nodeEnv === 'production' ? this.fetchAndApplyMultipliers.bind(this) : this.defaultGridGenerator.bind(this),
             checkGameOver: this.defaultCheckGameOver.bind(this),
             gameWinnerDeterminator: this.defaultGameWinnerDeterminator.bind(this),
             roundWinnerDeterminator: this.defaultRoundWinnerDeterminator.bind(this),
@@ -129,15 +133,15 @@ export class GameEngine {
         this.config.gameWinnerDeterminator = determinator.bind(this);
     }
 
-    public startGame(): void {
+    public async startGame(): Promise<void> {
         if (this.currentState === 'preGame') {
-            this.startRound();
+            await this.startRound();
         }
     }
 
-    private startRound(): void {
+    private async startRound(): Promise<void> {
         if (this.currentState !== 'inRound') {
-            const newRound = this.createRoundData(this.config.roundDuration);
+            const newRound = await this.createRoundData(this.config.roundDuration);
             this.rounds.push(newRound);
             this.currentRoundIndex++;
             this.gameClock = new GameClock(this.config.roundDuration, this.onTick, this.onRoundComplete);
@@ -216,12 +220,23 @@ export class GameEngine {
         }
     }
 
-    private createRoundData(duration: number): RoundData {
+    private async createRoundData(duration: number): Promise<RoundData> {
+
+        let grid: LetterGrid | Promise<LetterGrid> = await this.config.gridGenerator();
+        if (grid instanceof Promise) {
+            grid = grid.then((resolvedGrid) => {
+                this.logger.context('createRoundData').debug('Resolved grid', {resolvedGrid});
+                return resolvedGrid;
+            });
+        }
+
+        grid = grid as LetterGrid;
+
         return {
             roundNumber: this.currentRoundIndex + 1,
             playerData: new Map(),
             winner: undefined,
-            grid: this.config.gridGenerator(),
+            grid: grid,
             startTime: Date.now(),
             duration: duration,
         };
@@ -322,21 +337,12 @@ export class GameEngine {
         return score;
     }
 
-
     private defaultGridGenerator(): LetterGrid {
         const grid: LetterGrid = [];
         const gridSize = this.config.gridSize;
 
         // Function to determine multiplier presence and value
-        const determineMultiplier = (isLetter: boolean): any => {
-            // Increase likelihood of multipliers in later rounds
-            const chance = Math.random();
-            const threshold = 0.85 - ((this.currentRoundIndex + 1) * 0.05); // Increase chance by 5% each round
-            if (chance > threshold) {
-                return isLetter ? (chance > 0.75 ? 2 : 3) : (chance > 0.85 ? 2 : 1);
-            }
-            return 1;
-        };
+
 
         for (let i = 0; i < gridSize; i++) {
             const row: LetterTile[] = [];
@@ -348,8 +354,8 @@ export class GameEngine {
                 const letterTile: LetterTile = {
                     letter,
                     value: score, // Use the predefined score
-                    multiplierLetter: determineMultiplier(true),
-                    multiplierWord: determineMultiplier(false),
+                    multiplierLetter: this.determineMultiplier(true),
+                    multiplierWord: this.determineMultiplier(false),
                 };
                 row.push(letterTile);
             }
@@ -358,61 +364,56 @@ export class GameEngine {
         return grid;
     }
 
-    private calculateMomentumScore(playerUuid: string, baseScore: number, word: LetterTile[]): number {
+    private async fetchAndApplyMultipliers(): Promise<LetterGrid> {
 
-        // Calculate word length
-        const wordLength = word.length;
+        const minDiversity: number = 0
+        const maxDiversity: number = 1
+        const minDifficulty: number = 0
+        const maxDifficulty: number = 1000
 
-        // Calculate word complexity
-        const complexLetters = ['Q', 'X', 'Z', 'W'];
-        const complexityFactor = word.reduce((acc, tile) => acc + (complexLetters.includes(tile.letter) ? 1 : 0), 0);
+        try {
 
-        // Define momentum scoring logic
-        let momentumBonus = 1; // No bonus by default
+            const api_url = config.gridApiUrl;
 
-        // Adjust momentum bonus based on word length and complexity
-        if (wordLength > 5) { // Longer words get a bonus
-            momentumBonus += 0.05 * (wordLength - 5);
-        }
-        if (complexityFactor > 0) { // Add complexity bonus
-            momentumBonus += 0.1 * complexityFactor;
-        }
-
-        let remainingTime = this.gameClock?.getRemainingTime();
-        let veryFastMomentumBonus = 1;
-        if (remainingTime) {
-            // Calculate the current word timestamp
-            const currentWordTimestamp = this.config.roundDuration - remainingTime;
-
-            // Find the last added word timestamp for this player
-            let lastWordTimestamp;
-            let words = this.getPlayerWords(playerUuid);
-
-            if (words && words.length > 0) {
-                lastWordTimestamp = words[words.length - 1][0];
-            }
-
-            if (lastWordTimestamp !== undefined) {
-                // Calculate the time difference between the last and current word submissions
-                let timeDifference = currentWordTimestamp - lastWordTimestamp;
-
-                // Adjust very fast momentum bonus based on the time difference
-                if (timeDifference <= 2000) { // Within 2 seconds
-                    veryFastMomentumBonus = 1.5;
-                } else if (timeDifference <= 3000) { // Within 3 seconds
-                    veryFastMomentumBonus = 1.3;
-                } else if (timeDifference <= 5000) { // Within 5 seconds
-                    veryFastMomentumBonus = 1.1;
+            // Fetch the grid from the API
+            const response = await axios.get(api_url + '/get_grid', {
+                params: {
+                    min_diversity: minDiversity,
+                    max_diversity: maxDiversity,
+                    min_difficulty: minDifficulty,
+                    max_difficulty: maxDifficulty,
                 }
-            }
-        }
+            });
 
-        // Apply both the momentum bonus and the very fast momentum bonus
-        return baseScore * momentumBonus * veryFastMomentumBonus;
+            const gridData = response.data.grid;
+            return gridData.map((row: string[]) =>
+                row.map((letter: string): LetterTile => ({
+                    letter: letter.toUpperCase(),
+                    value: this.getLetterScore(letter.toUpperCase()), // You need to implement this method based on your scoring system
+                    multiplierLetter: this.determineMultiplier(true),
+                    multiplierWord: this.determineMultiplier(false),
+                }))
+            );
+        } catch (error) {
+            console.error("Failed to fetch grid:", error);
+            throw new Error("Failed to fetch grid from the API");
+        }
     }
 
-    private getPlayerWords(playerUuid: string): [Timestamp, Path][] {
-        return this.rounds[this.currentRoundIndex].playerData.get(playerUuid)?.words || [];
+    private determineMultiplier(isLetter: boolean): number {
+        // Increase likelihood of multipliers in later rounds
+        const chance = Math.random();
+        const threshold = 0.85 - ((this.currentRoundIndex + 1) * 0.05); // Increase chance by 5% each round
+        if (chance > threshold) {
+            return isLetter ? (chance > 0.75 ? 2 : 3) : (chance > 0.85 ? 2 : 1);
+        }
+        return 1;
+    }
+
+    private getLetterScore(letter: string): number {
+        // Use predefined scores in frenchLetterDistribution
+        const letterData = this.frenchLetterDistribution.find((data) => data.letter === letter);
+        return letterData ? letterData.score : 0;
     }
 
     private getPathLetterTiles(path: Path, grid: LetterGrid): LetterTile[] {

@@ -2,6 +2,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { GameSession } from './GameSession';
 import { createScopedLogger } from '../logger/logger';
 import {NormalRankGameSession} from "./NormalRankGameSession";
+import {BadSessionRequestError, PlayerNotInSessionError, SessionNotFoundError} from "../error/Error";
 
 export interface PlayerMetadata {
     uuid: string;
@@ -29,9 +30,9 @@ export class GameSessionManager {
     }
 
     createSession(requestData: SessionRequestData): string {
-        const sessionUUID = uuidv4();
+        const sessionUUID: string = uuidv4();
 
-        const session = this.createGameSession(
+        const session: GameSession = this.createGameSession(
             sessionUUID, 
             requestData.playersMetadata, 
             requestData.gameMode, 
@@ -43,22 +44,17 @@ export class GameSessionManager {
         return sessionUUID;
     }
 
-    getSession(sessionUUID: string): GameSession | undefined {
-        return this.sessions.get(sessionUUID);
+    getSession(sessionUUID: string): GameSession {
+        const session: GameSession | undefined = this.sessions.get(sessionUUID);
+        if (session === undefined) {
+            throw new SessionNotFoundError(sessionUUID);
+        }
+        return session;
     }
 
     handlePlayerTimeout(playerUUID: string, sessionUUID: string) {
         const session = this.getSession(sessionUUID);
-        if (session === undefined) {
-            this.logger.context('handlePlayerTimeout').warn('Game session not found', { sessionUUID });
-            return;
-        }
-
-        if (!session.hasPlayer(playerUUID)) {
-            this.logger.context('handlePlayerTimeout').error('Player not found in the game session', { playerUUID });
-            return;
-        }
-
+        session.validatePlayerIsInSession(playerUUID);
         session.playerLeaves(playerUUID);
     }
 
@@ -80,11 +76,8 @@ export class GameSessionManager {
                         return new NormalRankGameSession(sessionUUID, playerMetadata, gameMode, gameType);
                 }
                 break;
-            default:
-                this.logger.context('createGameSession').error('Invalid game mode or game type', { gameMode, gameType });
-                throw new Error('Invalid game mode or game type');
         }
 
-        return new NormalRankGameSession(sessionUUID, playerMetadata, gameMode, gameType);
+        throw new BadSessionRequestError('Invalid game mode or game type');
     }
 }

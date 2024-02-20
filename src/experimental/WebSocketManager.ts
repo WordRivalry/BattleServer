@@ -1,13 +1,14 @@
 // WebSocketManager.ts
-import { WebSocket } from 'ws';
+import { WebSocket, RawData } from 'ws';
 import { WebSocketServer } from 'ws';
 import { createScopedLogger } from '../logger/logger';
 import http from 'http';
 import config from "../../config";
+import {ErrorHandlingService} from "../error/Error";
 
 export interface IMessageHandler {
-    handleMessage(ws: WebSocket, action: any, playerUUID: string, gameSessionUUID: string): void;
-    handleConnection(ws: WebSocket, playerUUID: string | undefined, gameSessionUUID: string | undefined): void;
+    handleMessage(ws: WebSocket, message: RawData, playerUUID: string, gameSessionUUID: string): void;
+    handleConnection(ws: WebSocket, playerUUID: string, gameSessionUUID: string): void;
     handleDisconnect(playerUUID: string | undefined, gameSessionUUID: string | undefined): void;
 }
 
@@ -22,17 +23,17 @@ export class WebSocketManager {
     private setupUpgradeHandler( server: http.Server): void {
         server.on('upgrade', (request, socket, head) => {
             this.logger.context("setupUpgradeHandler").info('Upgrade request received');
-            const apiKey = request.headers['x-api-key'] as string | undefined;
+            const apiKey: string | undefined = request.headers['x-api-key'] as string | undefined;
 
-            if (!this.isValidApiKey(apiKey)) {
+            if (!this.authenticateRequest(request)) {
                 socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
                 socket.destroy();
                 return;
             }
 
             // Extract the game session UUID and player UUID from the request
-            const gameSessionUUID = request.headers['x-game-session-uuid'] as string | undefined;
-            const playerUUID = request.headers['x-player-uuid'] as string | undefined;
+            const gameSessionUUID: string | undefined = request.headers['x-game-session-uuid'] as string | undefined;
+            const playerUUID: string | undefined = request.headers['x-player-uuid'] as string | undefined;
 
             if (!gameSessionUUID || !playerUUID) {
                 socket.write('HTTP/1.1 400 Bad Request\r\n\r\n');
@@ -40,10 +41,15 @@ export class WebSocketManager {
                 return;
             }
 
-            this.wss.handleUpgrade(request, socket, head, (ws) => {
+            this.wss.handleUpgrade(request, socket, head, (ws: WebSocket): void => {
                 this.wss.emit('connection', ws, request );
             });
         });
+    }
+
+    private authenticateRequest(request: http.IncomingMessage): boolean {
+        const apiKey: string | undefined = request.headers['x-api-key'] as string | undefined;
+        return this.isValidApiKey(apiKey);
     }
 
     private isValidApiKey(apiKey: string | undefined): boolean {
@@ -55,33 +61,41 @@ export class WebSocketManager {
         this.wss.on('connection', (ws, request) => {
             const gameSessionUUID = request.headers['x-game-session-uuid'] as string;
             const playerUUID = request.headers['x-player-uuid'] as string;
-            this.messageHandler.handleConnection(ws, playerUUID, gameSessionUUID);
 
-            ws.on('message', (message) => {
+            try {
+                this.messageHandler.handleConnection(ws, playerUUID, gameSessionUUID);
+            } catch (error) {
+                ErrorHandlingService.sendError(ws, error);
+            }
 
-                let action;
+            ws.on('message', (message: RawData) => {
                 try {
-                    action = JSON.parse(message.toString());
+                    this.messageHandler.handleMessage(ws, message, playerUUID, gameSessionUUID);
                 } catch (error) {
-                    this.logger.context("handleMessage").error('Error parsing message:', error);
-                    ws.close(1007, 'Invalid JSON');
-                    return;
+                    ErrorHandlingService.sendError(ws, error);
                 }
-
-                this.messageHandler.handleMessage(ws, action, playerUUID, gameSessionUUID);
             });
 
-            ws.on('close', () => {
-                this.messageHandler.handleDisconnect(playerUUID, gameSessionUUID);
+            ws.on('close', (code) => {
+                if (code === 1001) return; // Normal closure
+
+                if (code === 1006) {
+                    this.logger.context("setupWebSocketServer").info('Client closed connection unexpectedly');
+                }
+
+                if (code === 1008) {
+                    this.logger.context("setupWebSocketServer").info('Client closed connection due to an error');
+                }
+
+                try {
+                    this.messageHandler.handleDisconnect(playerUUID, gameSessionUUID);
+                } catch (error) {
+                    ErrorHandlingService.sendError(ws, error);
+                }
             });
 
             ws.on('error', (error) => {
-                this.logger.context("on.error").error('WebSocket error:', error);
-            });
-
-            ws.on('pong', () => {
-                this.logger.context("on.pong").info('Received a pong from user', { playerUUID: playerUUID });
-                // Here, you can update some kind of "last seen" timestamp for the client
+                ErrorHandlingService.sendError(ws, error);
             });
         });
     }

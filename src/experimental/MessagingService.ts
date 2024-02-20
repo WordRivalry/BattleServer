@@ -43,6 +43,14 @@ export class MessagingService {
         this.playerSockets.delete(playerUUID);
     }
 
+    public disconnectAllPlayers() {
+        this.playerSockets.forEach((socket) => {
+            if (socket.readyState === WebSocket.OPEN) {
+                socket.close(1001, 'Game session ended');
+            }
+        });
+    }
+
     public sendMissedMessages(playerUUID: string, lastSeen: number): void {
         const messages: GameMessage[] = this.getMessagesSince(playerUUID, lastSeen);
         messages.forEach(message => {
@@ -52,13 +60,13 @@ export class MessagingService {
 
     private deliverMessage(message: GameMessage) {
         if (message.recipient === 'all') {
-            this.logger.context('deliverMessage').debug('Delivering message to all players', {messageType: message.type});
+        //    this.logger.context('deliverMessage').debug('Delivering message to all players', {messageType: message.type});
             this.notifyAllPlayers(message);
         } else if (Array.isArray(message.recipient)) {
-            this.logger.context('deliverMessage').debug('Delivering message to multiple players', {messageType: message.type});
+        //    this.logger.context('deliverMessage').debug('Delivering message to multiple players', {messageType: message.type});
             message.recipient.forEach(uuid => this.notifyPlayer(uuid, message));
         } else {
-            this.logger.context('deliverMessage').debug('Delivering message to player', {messageType: message.type});
+        //    this.logger.context('deliverMessage').debug('Delivering message to player', {messageType: message.type});
             this.notifyPlayer(message.recipient, message);
         }
     }

@@ -29,7 +29,7 @@ export class HttpManager {
         this.app.post("/request-alloc", (req, res) => {
             try {
 
-                console.log(req.body)
+                this.logger.context("handleRequestAlloc").info("Received request:", req.body);
                 if (!req.body.gameMode || !req.body.modeType || !req.body.playersMetadata ) {
                     res.status(400).send("Bad Request");
                     return;

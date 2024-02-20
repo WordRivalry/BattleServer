@@ -1,4 +1,3 @@
-import {WebSocket} from 'ws';
 import {clearInterval} from "timers";
 import {GameSession} from "./GameSession";
 import {GameEngine, GameEngineDelegate, RoundData, WinnerResult} from "../modules/gameEngine/GameEngine";
@@ -6,6 +5,7 @@ import {createScopedLogger} from "../logger/logger";
 import {PlayerUUID} from "../types";
 import {PlayerMetadata} from "./GameSessionManager";
 import {Path} from "../modules/gameEngine/GameEngine";
+import {PlayerAction, PlayerAction_PublishWord} from "../validation/messageType";
 
 export class NormalRankGameSession extends GameSession implements GameEngineDelegate {
     private readonly gameEngine: GameEngine = new GameEngine();
@@ -34,20 +34,10 @@ export class NormalRankGameSession extends GameSession implements GameEngineDele
         this.gameEngine.setDelegate(this);
     }
 
-    private sendMetaData(): void {
-        const allUsernames = this.playersMetadata.map(player => player.username);
-        // Send usernames except the one who is receiving the message
-        this.playersMetadata.forEach((player, index) => {
-            const opponents = allUsernames.filter((_, i) => i !== index);
-            const payload = {opponentsUsername: opponents};
-            this.messagingService.publish('gameMetaData', payload, player.uuid);
-        });
-    }
-
     private startCountdown() {
-        this.hasStarted = true;
+        this.isProgressing = true;
         let countdown = 3;
-        const intervalId = setInterval(() => {
+        const intervalId = setInterval(async () => {
             // Send the countdown message to both players
             this.messagingService.publish('gameStartCountdown', countdown, 'all')
 
@@ -58,7 +48,7 @@ export class NormalRankGameSession extends GameSession implements GameEngineDele
                 clearInterval(intervalId);
 
                 // Now actually start the game
-                this.gameEngine.startGame();
+                await this.gameEngine.startGame();
             }
         }, 1000);
     }
@@ -154,7 +144,7 @@ export class NormalRankGameSession extends GameSession implements GameEngineDele
         this.messagingService.publish('gameEnd', gameEndPayload, 'all');
         this.NormalRankLogger.context('notifyPlayersGameEnd').debug('Game ended. Winner', {winner, gameSessionUUID: this.uuid});
         // Emit the game end event
-        this.emit('gameEnd', this.uuid);
+        this.closeGameSession();
     }
 
     onTimeUpdate(remainingTime: number): void {
@@ -162,13 +152,13 @@ export class NormalRankGameSession extends GameSession implements GameEngineDele
     }
 
     //////////////////////////////////////////////////
-    //           Abstract methods          //
+    //                Abstract methods              //
     //////////////////////////////////////////////////
 
-    override handlePlayerAction(playerUUID: string, action: any): void {
+    override handlePlayerAction(playerUUID: string, action: PlayerAction_PublishWord): void {
         const round = this.gameEngine.getCurrentRound();
         if (!round) return;
-        this.gameEngine.addWord(playerUUID, action.wordPath);
+        this.gameEngine.addWord(playerUUID, (action.payload.data.wordPath));
     }
 
     override handlePlayerLeaves(playerUUID: string): void {
@@ -186,7 +176,7 @@ export class NormalRankGameSession extends GameSession implements GameEngineDele
 
     override startGame(): void {
         // Send the metadata and start the countdown
-        this.sendMetaData();
+        this.isProgressing = true;
         this.startCountdown();
     }
 }

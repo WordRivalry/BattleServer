@@ -6,6 +6,7 @@ export default {
     nodeEnv: process.env.NODE_ENV || "development",
     upgradeApiKey: process.env.UPGRADE_API_KEY || "development",
     port: process.env.PORT || 8080,
+    gridApiUrl: process.env.GRID_API_URL || "http://localhost:8078",
   //  corsEnabled: process.env.CORS_ENABLED || "true",
   //  apiPrefix: process.env.API_PREFIX || "api",
  //   appUrl: process.env.APP_URL || "http://localhost:3000",

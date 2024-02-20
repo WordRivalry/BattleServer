@@ -3,6 +3,12 @@ import { createScopedLogger } from "../logger/logger";
 import { GameSessionManager } from "./GameSessionManager";
 import { GameSession } from './GameSession';
 import { WebSocket } from "ws";
+import {
+    NoConnectionTimeoutError,
+    PlayerNotFoundError,
+    PlayerNotInSessionError,
+    SessionNotFoundError
+} from "../error/Error";
 
 export class PlayerSessionValidationAndManagement extends EventEmitter {
     private readonly reconnectionTimeouts: Map<string, NodeJS.Timeout> = new Map();
@@ -12,36 +18,17 @@ export class PlayerSessionValidationAndManagement extends EventEmitter {
         super();
     }
 
-    validatePlayerConnection(playerUUID: string, sessionUUID: string): boolean {
+    validatePlayerConnection(playerUUID: string, sessionUUID: string): void {
         // Validate if the playerUUID belongs to the sessionUUID
         const session = this.getSession(sessionUUID);
-        if (session === undefined) {
-            this.logger.context('validatePlayerConnection').warn('No active game session found', { sessionUUID });
-            return false;
-        }
-
-        if (session.hasPlayer(playerUUID)) {
-            return true;
-        } else {
-            this.logger.context('validatePlayerConnection').warn('Player does not belong to the game session', { playerUUID, sessionUUID });
-            return false;
-        }
+        // Validate player belongs to the session
+        session.validatePlayerIsInSession(playerUUID);
     }
 
     // Methods for handleDisconnection() and handleReconnection()
     handleDisconnection(playerUUID: string, sessionUUID: string): void {
-        // Fetch the session
         const session = this.getSession(sessionUUID);
-        if (session === undefined) {
-            this.logger.context('handleDisconnection').warn('No active game session found', { sessionUUID });
-            return;
-        }
-
-        // Validate player belongs to the session
-        if (!session.hasPlayer(playerUUID)) {
-            this.logger.context('handleDisconnection').warn('Player does not belong to the game session', { playerUUID, sessionUUID });
-            return;
-        }
+        session.validatePlayerIsInSession(playerUUID);
 
         // Handle based on the session state
         if (session.isInProgress()) {
@@ -62,20 +49,12 @@ export class PlayerSessionValidationAndManagement extends EventEmitter {
     handleReconnection(playerUUID: string, sessionUUID: string, ws: WebSocket): void {
         // Validate if the playerUUID belongs to the sessionUUID
         const session = this.getSession(sessionUUID);
-        if (session === undefined) {
-            this.logger.context('handleReconnection').warn('No active game session found', { sessionUUID });
-            return;
-        }
-
-        if (!session.hasPlayer(playerUUID)) {
-            this.logger.context('handleReconnection').warn('Player does not belong to the game session', { playerUUID, sessionUUID });
-            return;
-        }
+        // Validate player belongs to the session
+        session.validatePlayerIsInSession(playerUUID);
 
         const timeout = this.reconnectionTimeouts.get(playerUUID);
         if (timeout === undefined) {
-            this.logger.context('handleReconnection').warn('No reconnection timeout found', { playerUUID });
-            return;
+            throw new NoConnectionTimeoutError(playerUUID);
         }
 
         clearTimeout(timeout);
@@ -83,7 +62,7 @@ export class PlayerSessionValidationAndManagement extends EventEmitter {
         session.playerJoins(playerUUID, ws, true);
     }
 
-    private getSession(sessionUUID: string): GameSession | undefined {
+    private getSession(sessionUUID: string): GameSession {
         return this.gameSessionManager.getSession(sessionUUID);
     }
 

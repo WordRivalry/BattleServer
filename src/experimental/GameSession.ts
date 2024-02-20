@@ -4,18 +4,20 @@ import { WebSocket } from 'ws';
 import { EventEmitter } from 'events';
 import { createScopedLogger } from '../logger/logger';
 import { PlayerMetadata } from './GameSessionManager';
+import {PlayerNotInSessionError} from "../error/Error";
+import {PlayerAction} from "../validation/messageType";
 
 export abstract class GameSession extends EventEmitter {
     protected players: Player[] = [];
-    protected hasStarted: boolean = false;
+    protected isProgressing: boolean = false;
     protected messagingService: MessagingService;
     private logger = createScopedLogger('GameSession');
 
     abstract startGame(): void;
     abstract handlePlayerLeaves(playerUUID: string): void;
-    abstract handlePlayerAction(playerUUID: string, action: any): void;
+    abstract handlePlayerAction(playerUUID: string, action:  PlayerAction): void;
 
-    constructor(
+    protected constructor(
         public uuid: string,
         public playersMetadata: PlayerMetadata[],
         public gameMode: string,
@@ -38,12 +40,8 @@ export abstract class GameSession extends EventEmitter {
         });
     }
 
-    public playerJoins(playerUUID: PlayerUUID, ws: WebSocket, isReconnecting = false) {
-        const player = this.getPlayer(playerUUID);
-        if (player === undefined) {
-            this.logger.context('playerJoins').warn('Player not registered in the game session', { playerUUID });
-            return;
-        }
+    public playerJoins(playerUUID: PlayerUUID, ws: WebSocket, isReconnecting: boolean = false): void {
+        const player: Player = this.getPlayer(playerUUID);
 
         // Register player to the messaging service
         this.messagingService.registerPlayerSocket(playerUUID, ws);
@@ -63,46 +61,54 @@ export abstract class GameSession extends EventEmitter {
         player.lastSeen = Date.now();
 
         // if all players have joined, start the game
-        if (!this.hasStarted && this.allPlayersJoined()) {
+        if (!this.isProgressing && this.allPlayersJoined()) {
             // Start the game
             this.startGame();
         }
     }
 
-    public playerDisconnects(playerUUID: string) {
-        const player = this.getPlayer(playerUUID);
-        if (player === undefined) {
-            this.logger.context('playerLeaves').error('Player not registered in the game session', { playerUUID });
-            return;
-        }
+    public playerDisconnects(playerUUID: string): void {
+        const player: Player = this.getPlayer(playerUUID);
 
         // Update the player's connection status
         player.isConnected = false;
         player.lastSeen = Date.now();
     }
 
-    public playerLeaves(playerUUID: string) {
+    public playerLeaves(playerUUID: string): void {
         this.playerDisconnects(playerUUID);
         this.handlePlayerLeaves(playerUUID);
     }
 
-    public hasPlayer(playerUUID: string): boolean {
-        return this.players.some(player => player.uuid === playerUUID);
+    public validatePlayerIsInSession(playerUUID: string): void {
+        if (!this.hasPlayer(playerUUID)) {
+            throw new PlayerNotInSessionError(playerUUID);
+        }
     }
 
     public isInProgress(): boolean {
-        return this.hasStarted;
+        return this.isProgressing;
+    }
+
+    private hasPlayer(playerUUID: string): boolean {
+        return this.players.some(player => player.uuid === playerUUID);
     }
 
     private allPlayersJoined(): boolean {
         return this.players.every(player => player.isConnected);
     }
 
-    private getPlayer(playerUUID: string): Player | undefined {
-        const player = this.players.find(player => player.uuid === playerUUID);
+    private getPlayer(playerUUID: string): Player {
+        const player: Player | undefined = this.players.find(player => player.uuid === playerUUID);
         if (player === undefined) {
-            this.logger.context('getPlayer').error('Player not found', { playerUUID, gameSessionUUID: this.uuid });
+           throw new PlayerNotInSessionError(playerUUID);
         }
         return player;
+    }
+
+    protected closeGameSession() {
+        this.isProgressing = false;
+        this.messagingService.disconnectAllPlayers()
+        this.emit('gameEnd', this.uuid);
     }
 }

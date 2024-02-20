@@ -3,7 +3,7 @@ import { GameSessionManager, PlayerMetadata, SessionRequestData } from './GameSe
 import { PlayerSessionValidationAndManagement } from './PlayerSessionValidationAndManagement';
 
 export class HttpRequestHandler {
-    constructor(private gameSessionManager: GameSessionManager, private playerSessionValidationAndManagement: PlayerSessionValidationAndManagement) {}
+    constructor(private gameSessionManager: GameSessionManager) {}
 
     handleRequestAlloc(playersMetadata: PlayerMetadata[], gameMode: string, modeType: string): string {
         const sessionRequestData: SessionRequestData = {

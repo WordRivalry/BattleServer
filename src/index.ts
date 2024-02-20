@@ -11,8 +11,7 @@ const playerSessionValidationAndManagement = new PlayerSessionValidationAndManag
 
 // Instantiate http Request Handler
 const requestHandler = new HttpRequestHandler(
-    gameSessionManager, 
-    playerSessionValidationAndManagement
+    gameSessionManager
 );
 
 // Instantiate WebSocket Message Handler

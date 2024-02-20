@@ -9,8 +9,8 @@ import config from "../config";
 
 export class ConnectionManager {
     private readonly app: express.Application;
-    private server: http.Server;
-    private wss: WebSocketServer;
+    private readonly server: http.Server;
+    private readonly wss: WebSocketServer;
 
     private logger = createScopedLogger('ConnectionManager');
     private webSocketManager: WebSocketManager;

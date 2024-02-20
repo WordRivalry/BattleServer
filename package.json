@@ -36,9 +36,11 @@
   },
   "dependencies": {
     "@google-cloud/logging-winston": "^6.0.0",
+    "axios": "^1.6.7",
     "cors": "^2.8.5",
     "dotenv": "^16.4.1",
     "express": "^4.18.2",
+    "joi": "^17.12.1",
     "kafkajs": "^2.2.4",
     "ts-node": "^10.9.2",
     "uuid": "^9.0.1",
