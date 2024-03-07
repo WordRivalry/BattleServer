@@ -1,6 +1,8 @@
 // messageTypes.ts
 
-import {Path} from "../modules/gameEngine/GameEngine";
+import { Path } from "../../gameEngine/GameEngine";
+
+
 
 export enum GameMode {
     RANK = 'RANK',
@@ -14,7 +16,7 @@ export enum ModeType {
 
 export enum ActionType {
     JOIN_GAME_SESSION = 'JOIN_GAME_SESSION',
-    LEAVE_GAME_SESSION = 'LEAVE_GAME_SESSION',
+    PLAYER_LEFT_SESSION = 'LEAVE_GAME_SESSION',
     PLAYER_ACTION = 'PLAYER_ACTION',
 }
 
@@ -36,7 +38,7 @@ export interface JoinGameSessionAction {
 
 // Leave game session action
 export interface LeaveGameSessionAction {
-    type: ActionType.LEAVE_GAME_SESSION;
+    type: ActionType.PLAYER_LEFT_SESSION;
 }
 
 // Player action

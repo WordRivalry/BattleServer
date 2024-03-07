@@ -158,6 +158,12 @@ export class NoConnectionTimeoutError extends SessionError {
     }
 }
 
+export class NoLastSeenError extends SessionError {
+    constructor(cause?: string) {
+        super('No last seen', 3012, cause);
+    }
+}
+
 // VALIDATION ERRORS
 
 export class ValidationError extends CustomError {

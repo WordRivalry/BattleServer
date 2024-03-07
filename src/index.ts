@@ -1,13 +1,13 @@
 // index.ts
-import { GameSessionManager } from "./experimental/GameSessionManager";
-import { ConnectionManager } from './ConnectionManager';
-import { WebSocketMessageHandler as WebSocketMessageHandler } from './experimental/WebSocketMessageHandler';
-import { PlayerSessionValidationAndManagement } from "./experimental/PlayerSessionValidationAndManagement";
-import { HttpRequestHandler } from "./experimental/HttpRequestHandler";
+import { GameSessionManager } from "./modules/GameSession/GameSessionManager";
+import { ConnectionManager } from './modules/server_networking/ConnectionManager';
+import { WebSocketMessageHandler as WebSocketMessageHandler } from './modules/server_networking/WebSocketMessageHandler';
+import { PlayerConnection } from "./modules/server_networking/PlayerConnection";
+import { HttpRequestHandler } from "./modules/server_networking/HttpRequestHandler";
 
 // Instantiate services used for validation and management
 const gameSessionManager = new GameSessionManager();
-const playerSessionValidationAndManagement = new PlayerSessionValidationAndManagement(gameSessionManager);
+const playerSessionValidationAndManagement = new PlayerConnection(gameSessionManager);
 
 // Instantiate http Request Handler
 const requestHandler = new HttpRequestHandler(

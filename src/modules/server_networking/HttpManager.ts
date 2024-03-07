@@ -2,7 +2,7 @@
 import express from "express";
 import cors from "cors";
 import { createScopedLogger } from "../logger/logger";
-import { PlayerMetadata } from "./GameSessionManager";
+import { PlayerMetadata } from "../GameSession/GameSessionManager";
 
 export interface IHttpRequestHandler {
     handleRequestAlloc(playersMetadata: PlayerMetadata[], gameMode: string, modeType: string): string;

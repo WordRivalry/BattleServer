@@ -1,7 +1,7 @@
 // LoggerFactory.js
 import winston from 'winston';
 import { LoggingWinston } from '@google-cloud/logging-winston';
-import config from '../../config'; // Adjust the import path as needed
+import config from '../../../config'; // Adjust the import path as needed
 
 class LoggerFactory {
     static loggers = new Map();

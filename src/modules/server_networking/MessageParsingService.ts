@@ -1,21 +1,5 @@
 // MessageParsingService.ts
 import { RawData } from 'ws';
-
-import {
-    actionFormatSchema,
-    joinGameSessionActionSchema,
-    leaveGameSessionActionSchema,
-    playerAction_PublishWord,
-    playerAction_SendChatMessage,
-    playerActionSchema
-} from "../validation/validationSchema";
-import {
-    ActionType,
-    JoinGameSessionAction,
-    LeaveGameSessionAction,
-    PlayerAction, PlayerAction_PublishWord, PlayerAction_SendChatMessage, PlayerActionType,
-    WebSocketAction
-} from "../validation/messageType";
 import {
     InvalidActionFormatError,
     InvalidJoinGameSessionActionError,
@@ -25,6 +9,8 @@ import {
     InvalidPlayerActionError,
     ValidationFailedError
 } from "../error/Error";
+import { JoinGameSessionAction, LeaveGameSessionAction, PlayerAction, WebSocketAction, ActionType, PlayerAction_PublishWord, PlayerAction_SendChatMessage, PlayerActionType } from './validation/messageType';
+import { actionFormatSchema, joinGameSessionActionSchema, leaveGameSessionActionSchema, playerActionSchema, playerAction_PublishWord, playerAction_SendChatMessage } from './validation/validationSchema';
 
 export class MessageParsingService {
     public static parseAndValidateMessage(message: RawData): JoinGameSessionAction | LeaveGameSessionAction | PlayerAction {
@@ -51,7 +37,7 @@ export class MessageParsingService {
         switch (action.type) {
             case ActionType.JOIN_GAME_SESSION:
                 return this.validateJoinGameSessionAction(action);
-            case ActionType.LEAVE_GAME_SESSION:
+            case ActionType.PLAYER_LEFT_SESSION:
                 return this.validateLeaveGameSessionAction(action);
             case ActionType.PLAYER_ACTION:
                 return this.validatePlayerAction(action);

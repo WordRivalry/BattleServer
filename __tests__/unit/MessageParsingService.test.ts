@@ -1,16 +1,15 @@
 // __tests__/unit/MessageParsingService.test.ts
-import { MessageParsingService } from '../../src/experimental/MessageParsingService';
+import { MessageParsingService } from '../../src/modules/server_networking/MessageParsingService';
 import {
     InvalidActionFormatError,
     InvalidJoinGameSessionActionError,
     InvalidJsonError,
     InvalidLeaveGameSessionActionError,
-    InvalidPlayerActionError,
     InvalidPlayerAction_PublishWordError,
     InvalidPlayerAction_SendChatMessageError,
     ValidationFailedError
-} from '../../src/error/Error';
-import { ActionType, PlayerActionType } from '../../src/validation/messageType';
+} from '../../src/modules/error/Error';
+import { ActionType, PlayerActionType } from '../../src/modules/server_networking/validation/messageType';
 
 describe('MessageParsingService', () => {
 
@@ -36,7 +35,7 @@ describe('MessageParsingService', () => {
         });
 
         it('should throw InvalidLeaveGameSessionActionError for invalid leave game session action', () => {
-            const invalidLeaveGameSessionAction = JSON.stringify({ type: ActionType.LEAVE_GAME_SESSION, payload: {} });
+            const invalidLeaveGameSessionAction = JSON.stringify({ type: ActionType.PLAYER_LEFT_SESSION, payload: {} });
             expect(() => MessageParsingService.parseAndValidateMessage(invalidLeaveGameSessionAction as any)).toThrow(InvalidLeaveGameSessionActionError);
         });
 
@@ -73,7 +72,7 @@ describe('MessageParsingService', () => {
                     type: ActionType.PLAYER_ACTION,
                     payload: {
                         playerAction: PlayerActionType.PUBLISH_WORD,
-                        data: { wordPath: ['valid', 'array'] }
+                        data: { wordPath: [[0, 0], [0, 1]] }
                     }
                 });
                 expect(() => MessageParsingService.parseAndValidateMessage(validPublishWordAction as any)).not.toThrow();

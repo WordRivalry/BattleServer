@@ -3,11 +3,11 @@ import { WebSocket, RawData } from 'ws';
 import { WebSocketServer } from 'ws';
 import { createScopedLogger } from '../logger/logger';
 import http from 'http';
-import config from "../../config";
+import config from "../../../config";
 import {ErrorHandlingService} from "../error/Error";
 
 export interface IMessageHandler {
-    handleMessage(ws: WebSocket, message: RawData, playerUUID: string, gameSessionUUID: string): void;
+    handleMessage(message: RawData, playerUUID: string, gameSessionUUID: string): void;
     handleConnection(ws: WebSocket, playerUUID: string, gameSessionUUID: string): void;
     handleDisconnect(playerUUID: string | undefined, gameSessionUUID: string | undefined): void;
 }
@@ -70,7 +70,7 @@ export class WebSocketManager {
 
             ws.on('message', (message: RawData) => {
                 try {
-                    this.messageHandler.handleMessage(ws, message, playerUUID, gameSessionUUID);
+                    this.messageHandler.handleMessage(message, playerUUID, gameSessionUUID);
                 } catch (error) {
                     ErrorHandlingService.sendError(ws, error);
                 }

@@ -1,8 +1,8 @@
-// GameFlowManager.ts
+// GameEngine.ts
 
 import {CompleteCallback, GameClock, TickCallback} from './GameClock';
 import {LetterGrid, LetterTile} from "./LetterGrid";
-import {createScopedLogger} from "../../logger/logger";
+import {createScopedLogger} from "../logger/logger";
 import {PlayerUUID, Timestamp} from "../../types";
 import axios from "axios";
 import config from "../../../config";
@@ -10,6 +10,7 @@ import config from "../../../config";
 export type Row = number;
 export type Col = number;
 export type Path = [Row, Col][];
+export type GameOverChecker =  "BestOfOne" | "BestOfThree";
 
 export interface PlayerRoundData {
     score: number;
@@ -35,13 +36,10 @@ export type GameEngineState = 'undefined' | 'preGame' | 'inRound' | 'intermissio
 
 export interface GameEngineDelegate {
     onRoundStart: (roundData: RoundData) => void;
-    onScoreUpdate: (playerUuid: PlayerUUID, score: number) => void;
+    onScoreUpdate: (playerUUID: PlayerUUID, score: number) => void;
     onRoundEnd: (roundData: RoundData) => void;
-    // Called when the game ends
     onGameEnd: (winner: WinnerResult) => void;
-
-    // For real-time games, providing periodic time updates could be beneficial.
-    onTimeUpdate: (remainingTime: number) => void;
+    onTick: (remainingTime: number) => void;
 }
 
 export class GameEngine {
@@ -75,7 +73,7 @@ export class GameEngine {
             gridSize: 5,
             wordScoreCalculator: this.defaultWordScoreCalculator.bind(this),
             gridGenerator: config.nodeEnv === 'production' ? this.fetchAndApplyMultipliers.bind(this) : this.defaultGridGenerator.bind(this),
-            checkGameOver: this.defaultCheckGameOver.bind(this),
+            checkGameOver: this.bestOfThree.bind(this),
             gameWinnerDeterminator: this.defaultGameWinnerDeterminator.bind(this),
             roundWinnerDeterminator: this.defaultRoundWinnerDeterminator.bind(this),
         };
@@ -125,8 +123,12 @@ export class GameEngine {
         this.config.gridGenerator = generator.bind(this);
     }
 
-    public setCheckGameOver(checker: (rounds: RoundData[]) => boolean): void {
-        this.config.checkGameOver = checker.bind(this);
+    public setCheckGameOver(checker: GameOverChecker): void {
+        if (checker === 'BestOfOne') {
+            this.config.checkGameOver = this.bestOfOne.bind(this);
+        } else if (checker === 'BestOfThree') {
+            this.config.checkGameOver = this.bestOfThree.bind(this);
+        }
     }
 
     public setWinnerDeterminator(determinator: (rounds: RoundData[]) => WinnerResult): void {
@@ -152,7 +154,7 @@ export class GameEngine {
     }
 
     private onTick: TickCallback = (remainingTime: number): void => {
-        this.delegate?.onTimeUpdate(remainingTime);
+        this.delegate?.onTick(remainingTime);
     };
 
     private onRoundComplete: CompleteCallback = (): void => {
@@ -246,7 +248,32 @@ export class GameEngine {
     // Default implementations //
     /////////////////////////////
 
-    private defaultCheckGameOver(): boolean {
+
+    private bestOfOne(): boolean {
+        const roundVictories = new Map<PlayerUUID, number>();
+
+        this.rounds.forEach((round) => {
+            const winners = round.winner;
+            if (winners && winners.status !== 'tie') { // ties do not contribute
+                winners.winners.forEach((winner) => {
+                    roundVictories.set(winner, (roundVictories.get(winner) || 0) + 1);
+                });
+            }
+        });
+
+        let gameOver = false;
+
+        // Explicitly checking for 2 victories, suitable for "best of 3" format
+        roundVictories.forEach((victories) => {
+            if (victories >= 2) {
+                gameOver = true;
+            }
+        });
+
+        return gameOver;
+    }
+
+    private bestOfThree(): boolean {
         const roundVictories = new Map<PlayerUUID, number>();
 
         this.rounds.forEach((round) => {
@@ -289,6 +316,18 @@ export class GameEngine {
         return this.determineWinners(totalScores);
     }
 
+    /**
+     * Determines the winners based on the scores provided. This function sorts the scores in descending order
+     * and evaluates the results to identify if there's a single winner, a tie among all players, or a ranking
+     * of winners based on scores. It uses the logger to debug scores and the sorting process.
+     *
+     * @param {Map<PlayerUUID, number>} scores - A map of player UUIDs to their respective scores.
+     * @returns {WinnerResult} The result object containing the status of the game (tie, singleWinner, or ranked)
+     * and an array of winner UUIDs. The status 'tie' indicates all players have tied scores,
+     * 'singleWinner' indicates a single player with the highest score, and 'ranked' provides a ranking of players
+     * based on their scores. In the case of no scores present, it returns a status of 'tie' with an empty winners array.
+     * Consider updating the return status to 'noAction' or similar if appropriate for your application logic.
+     */
     private determineWinners(scores: Map<PlayerUUID, number>): WinnerResult {
         this.logger.context('determineWinners').debug('Scores', { scores });
 
@@ -313,7 +352,6 @@ export class GameEngine {
                 result = { status: 'ranked', winners: sortedScores.map(([uuid]) => uuid) };
             }
         }
-
         return result;
     }
 

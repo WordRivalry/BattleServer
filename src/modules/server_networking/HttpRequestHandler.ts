@@ -1,6 +1,5 @@
 
-import { GameSessionManager, PlayerMetadata, SessionRequestData } from './GameSessionManager';
-import { PlayerSessionValidationAndManagement } from './PlayerSessionValidationAndManagement';
+import { GameSessionManager, PlayerMetadata, SessionRequestData } from '../GameSession/GameSessionManager';
 
 export class HttpRequestHandler {
     constructor(private gameSessionManager: GameSessionManager) {}

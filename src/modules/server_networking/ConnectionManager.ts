@@ -1,11 +1,11 @@
 // ConnectionManager.ts
 import { WebSocketServer } from 'ws';
-import { createScopedLogger } from './logger/logger';
-import { IMessageHandler, WebSocketManager } from './experimental/WebSocketManager';
-import { HttpManager, IHttpRequestHandler } from './experimental/HttpManager';
+import { createScopedLogger } from '../logger/logger';
+import { IMessageHandler, WebSocketManager } from './WebSocketManager';
+import { HttpManager, IHttpRequestHandler } from './HttpManager';
 import http, { createServer } from 'http';
 import express from 'express';
-import config from "../config";
+import config from "../../../config";
 
 export class ConnectionManager {
     private readonly app: express.Application;

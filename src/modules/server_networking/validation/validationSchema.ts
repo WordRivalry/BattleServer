@@ -22,7 +22,7 @@ export const joinGameSessionActionSchema = Joi.object<JoinGameSessionAction>({
 
 // Action schema for LeaveGameSessionAction
 export const leaveGameSessionActionSchema = Joi.object({
-    type: Joi.string().valid(ActionType.LEAVE_GAME_SESSION).required()
+    type: Joi.string().valid(ActionType.PLAYER_LEFT_SESSION).required()
 });
 
 // Player Action - Format

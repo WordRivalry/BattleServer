@@ -1,25 +1,24 @@
-import {clearInterval} from "timers";
-import {GameSession} from "./GameSession";
-import {GameEngine, GameEngineDelegate, RoundData, WinnerResult} from "../modules/gameEngine/GameEngine";
-import {createScopedLogger} from "../logger/logger";
-import {PlayerUUID} from "../types";
-import {PlayerMetadata} from "./GameSessionManager";
-import {Path} from "../modules/gameEngine/GameEngine";
-import {PlayerAction, PlayerAction_PublishWord} from "../validation/messageType";
+import { clearInterval } from "timers";
+import { GameSession } from "../GameSession";
+import { GameEngine, GameEngineDelegate, RoundData, WinnerResult } from "../../gameEngine/GameEngine";
+import { createScopedLogger } from "../../logger/logger";
+import { PlayerUUID } from "../../../types";
+import { PlayerMetadata } from "../GameSessionManager";
+import { PlayerAction_PublishWord } from "../../server_networking/validation/messageType";
 
 export class NormalRankGameSession extends GameSession implements GameEngineDelegate {
     private readonly gameEngine: GameEngine = new GameEngine();
-    private NormalRankLogger = createScopedLogger('NormalRankGameSession');
+    private logger = createScopedLogger('NormalRankGameSession');
 
     constructor(
-        public uuid: string,
+        public gameSessionId: string,
         public playersMetadata: PlayerMetadata[],
         public gameMode: string,
         public modeType: string
     ) {
 
         super(
-            uuid,
+            gameSessionId,
             playersMetadata,
             gameMode,
             modeType
@@ -27,19 +26,19 @@ export class NormalRankGameSession extends GameSession implements GameEngineDele
 
         // Initialize the game engine
         this.gameEngine.setGridSize(4);
-        this.gameEngine.setRoundDuration(30000);
-        this.gameEngine.setIntermissionDuration(5000);
+        this.gameEngine.setCheckGameOver("BestOfOne")
+        this.gameEngine.setRoundDuration(90000);
 
         // Set the delegates
         this.gameEngine.setDelegate(this);
     }
 
     private startCountdown() {
-        this.isProgressing = true;
+        this.changeStateToInProgress();
         let countdown = 3;
         const intervalId = setInterval(async () => {
             // Send the countdown message to both players
-            this.messagingService.publish('gameStartCountdown', countdown, 'all')
+            this.sessionNetworking.sendData('gameStartCountdown', countdown, 'all')
 
             if (countdown > 1) {
                 countdown--; // Decrease the countdown
@@ -53,24 +52,50 @@ export class NormalRankGameSession extends GameSession implements GameEngineDele
         }, 1000);
     }
 
-    public updateScore(playerUuid: PlayerUUID, wordPath: Path): void {
+    //////////////////////////////////////////////////
+    //               Network Delegates              //
+    //////////////////////////////////////////////////
+
+    override onAPlayerJoined(player: string): void {
+        this.logger.context('handlePlayerJoins').info('Player joined', {player, gameSessionUUID: this.gameSessionId});
+    }
+
+    override onAllPlayersJoined(): void {
+        this.startCountdown();
+    }
+
+    override onAction(player: string, action: PlayerAction_PublishWord): void {
         const round = this.gameEngine.getCurrentRound();
         if (!round) return;
-        this.gameEngine.addWord(playerUuid, wordPath);
+        this.gameEngine.addWord(player, (action.payload.data.wordPath));
+    }
+
+    override onPlayerLeft(player: string): void {
+        this.logger.context('handlePlayerLeaves').info('Ending game due to player leaving', {player: player, gameSessionUUID: this.gameSessionId});
+
+        // End the game and notify the other player of the disconnection
+        const gameEndPayload = {
+            winner: player ? this.playersMetadata.find(p => p.uuid !== player)?.uuid : undefined, rounds: this.gameEngine.getRounds()
+        };
+
+        // Send the game end message to all players
+        this.sessionNetworking.sendData('gameEndByPlayerLeft', gameEndPayload);
+        this.gameEngine.endGame();
     }
 
     //////////////////////////////////////////////////
     //             Game engine delegates            //
     //////////////////////////////////////////////////
+
     onRoundStart(roundData: RoundData): void {
         let payload = {
             round: roundData.roundNumber + 1, duration: roundData.duration, grid: roundData.grid,
         };
 
         // Send the grid to all players
-        this.messagingService.publish('roundStart', payload, 'all');
+        this.sessionNetworking.sendData('roundStart', payload);
 
-        this.NormalRankLogger.context('notifyPlayersRoundStart').info('Round started', {round: roundData.roundNumber + 1, gameSessionUUID: this.uuid});
+        this.logger.context('notifyPlayersRoundStart').info('Round started', {round: roundData.roundNumber + 1, gameSessionUUID: this.gameSessionId});
     }
 
     onScoreUpdate(playerUuid: PlayerUUID, score: number): void {
@@ -80,9 +105,9 @@ export class NormalRankGameSession extends GameSession implements GameEngineDele
         };
 
         // Broadcast the updated score to all players except the one who scored
-        this.messagingService.publish('opponentScoreUpdate', scoreUpdateMessage, this.playersMetadata.filter(player => player.uuid !== playerUuid).map(player => player.uuid));
+        this.sessionNetworking.sendData('opponentScoreUpdate', scoreUpdateMessage, this.playersMetadata.filter(player => player.uuid !== playerUuid).map(player => player.uuid));
 
-        this.NormalRankLogger.context('notifyPlayersScoreUpdate').info('Score updated', {playerUuid, newScore: score, gameSessionUUID: this.uuid});
+        this.logger.context('notifyPlayersScoreUpdate').info('Score updated', {playerUuid, newScore: score, gameSessionUUID: this.gameSessionId});
     }
 
     onRoundEnd(round: RoundData): void {
@@ -92,7 +117,7 @@ export class NormalRankGameSession extends GameSession implements GameEngineDele
         if (round.winner) {
             winnerResult = round.winner;
         } else {
-            this.NormalRankLogger.context('notifyPlayersIntermission').warn('Winner result is not available', {gameSessionUUID: this.uuid});
+            this.logger.context('notifyPlayersIntermission').warn('Winner result is not available', {gameSessionUUID: this.gameSessionId});
             return;
         }
 
@@ -112,7 +137,7 @@ export class NormalRankGameSession extends GameSession implements GameEngineDele
 
             // Prepare the payload for the end of round summary
             let endRoundPayload: any = {
-                round: round.roundNumber, yourScore: playerScore, opponentScoreTotal: opponentScoreTotal, // This could be adjusted based on presentation preferences
+                round: round.roundNumber + 1, yourScore: playerScore, opponentScoreTotal: opponentScoreTotal
             };
 
             // Adjust the payload based on the winner result
@@ -131,7 +156,7 @@ export class NormalRankGameSession extends GameSession implements GameEngineDele
             }
 
             // Send the customized payload to each player
-            this.messagingService.publish('endRound', endRoundPayload, playerUUID);
+            this.sessionNetworking.sendData('endRound', endRoundPayload, playerUUID);
         });
     }
 
@@ -141,42 +166,12 @@ export class NormalRankGameSession extends GameSession implements GameEngineDele
         };
 
         // Send the game end message to all players
-        this.messagingService.publish('gameEnd', gameEndPayload, 'all');
-        this.NormalRankLogger.context('notifyPlayersGameEnd').debug('Game ended. Winner', {winner, gameSessionUUID: this.uuid});
-        // Emit the game end event
+        this.sessionNetworking.sendData('gameEnd', gameEndPayload);
+        this.logger.context('notifyPlayersGameEnd').debug('Game ended. Winner', {winner, gameSessionUUID: this.gameSessionId});
         this.closeGameSession();
     }
 
-    onTimeUpdate(remainingTime: number): void {
-        this.messagingService.publish('timeUpdate', remainingTime, 'all');
-    }
-
-    //////////////////////////////////////////////////
-    //                Abstract methods              //
-    //////////////////////////////////////////////////
-
-    override handlePlayerAction(playerUUID: string, action: PlayerAction_PublishWord): void {
-        const round = this.gameEngine.getCurrentRound();
-        if (!round) return;
-        this.gameEngine.addWord(playerUUID, (action.payload.data.wordPath));
-    }
-
-    override handlePlayerLeaves(playerUUID: string): void {
-        this.NormalRankLogger.context('handlePlayerLeaves').info('Ending game due to player leaving', {playerUUID, gameSessionUUID: this.uuid});
-
-        // End the game and notify the other player of the disconnection
-        const gameEndPayload = {
-            winner: playerUUID ? this.playersMetadata.find(player => player.uuid !== playerUUID)?.uuid : undefined, rounds: this.gameEngine.getRounds()
-        };
-
-        // Send the game end message to all players
-        this.messagingService.publish('gameEndByPlayerLeft', gameEndPayload, 'all');
-        this.gameEngine.endGame();
-    }
-
-    override startGame(): void {
-        // Send the metadata and start the countdown
-        this.isProgressing = true;
-        this.startCountdown();
+    onTick(remainingTime: number): void {
+        this.sessionNetworking.sendData('timeUpdate', remainingTime);
     }
 }

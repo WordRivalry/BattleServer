@@ -1,8 +1,10 @@
 import { v4 as uuidv4 } from 'uuid';
 import { GameSession } from './GameSession';
 import { createScopedLogger } from '../logger/logger';
-import {NormalRankGameSession} from "./NormalRankGameSession";
-import {BadSessionRequestError, PlayerNotInSessionError, SessionNotFoundError} from "../error/Error";
+import { NormalRankGameSession } from "./GameSessionType/NormalRankGameSession";
+import { BadSessionRequestError } from "../error/Error";
+import { EventEmitter } from "events";
+import {GameEvent} from "./GameEventsEmitter";
 
 export interface PlayerMetadata {
     uuid: string;
@@ -19,15 +21,8 @@ export class GameSessionManager {
     private sessions: Map<string, GameSession> = new Map();
     private logger = createScopedLogger('GameSessionManager');
 
-    constructor() {
-        // Listen for gameEnd events from the game sessions
-        this.sessions.forEach((session: GameSession) => {
-            session.on('gameEnd', (sessionUUID: string) => {
-                this.sessions.delete(sessionUUID);
-                this.logger.context('GameSessionManager').debug('Game session ended', { sessionUUID });
-            });
-        });
-    }
+
+    constructor(private eventEmitter: EventEmitter) {}
 
     createSession(requestData: SessionRequestData): string {
         const sessionUUID: string = uuidv4();
@@ -39,23 +34,15 @@ export class GameSessionManager {
             requestData.modeType
         );
 
-        this.sessions.set(session.uuid, session);
+        this.sessions.set(session.gameSessionId, session);
+
+        // Register the destroy event
+        this.eventEmitter.on(`${sessionUUID}:${GameEvent.GAME_END}`, () => {
+            this.sessions.delete(sessionUUID);
+        });
+
         this.logger.context('createSession').debug('Created game session', { sessionUUID });
         return sessionUUID;
-    }
-
-    getSession(sessionUUID: string): GameSession {
-        const session: GameSession | undefined = this.sessions.get(sessionUUID);
-        if (session === undefined) {
-            throw new SessionNotFoundError(sessionUUID);
-        }
-        return session;
-    }
-
-    handlePlayerTimeout(playerUUID: string, sessionUUID: string) {
-        const session = this.getSession(sessionUUID);
-        session.validatePlayerIsInSession(playerUUID);
-        session.playerLeaves(playerUUID);
     }
 
     private createGameSession(sessionUUID: string, playerMetadata: PlayerMetadata[], gameMode: string, gameType: string): GameSession {
