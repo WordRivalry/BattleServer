@@ -1,6 +1,6 @@
 // src/ecs/components/ComponentStore.ts
 
-import {Entity} from "../entity";
+import {Entity} from "../entities/entity";
 
 export class ComponentStore<T> {
     private components: T[] = [];
@@ -45,9 +45,10 @@ export class ComponentStore<T> {
         }
     }
 
-    get(entity: Entity): T | undefined {
+    get(entity: Entity): T {
         const index = this.entityToIndex.get(entity);
-        return index !== undefined ? this.components[index] : undefined;
+        if (index === undefined) throw new Error(`Attempted to retrieve a component from entity ${entity}, but it does not exist.`);
+        return this.components[index];
     }
 
     has(entity: Entity): boolean {

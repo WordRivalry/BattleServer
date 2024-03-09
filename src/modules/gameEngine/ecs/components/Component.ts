@@ -9,7 +9,7 @@ import { v4 as uuidv4 } from 'uuid';
 export abstract class Component {
     public readonly id: string;
 
-    protected constructor() {
+    constructor() {
         this.id = this.generateUniqueId();
     }
 

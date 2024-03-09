@@ -2,9 +2,9 @@
 import { WebSocket, RawData } from 'ws';
 import { WebSocketServer } from 'ws';
 import { createScopedLogger } from '../logger/logger';
+import { ErrorHandlingService } from "../error/Error";
 import http from 'http';
 import config from "../../../config";
-import {ErrorHandlingService} from "../error/Error";
 
 export interface IMessageHandler {
     handleMessage(message: RawData, playerUUID: string, gameSessionUUID: string): void;
@@ -23,7 +23,6 @@ export class WebSocketManager {
     private setupUpgradeHandler( server: http.Server): void {
         server.on('upgrade', (request, socket, head) => {
             this.logger.context("setupUpgradeHandler").info('Upgrade request received');
-            const apiKey: string | undefined = request.headers['x-api-key'] as string | undefined;
 
             if (!this.authenticateRequest(request)) {
                 socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');

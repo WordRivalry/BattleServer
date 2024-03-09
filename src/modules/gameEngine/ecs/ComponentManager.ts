@@ -1,6 +1,6 @@
 // src/ecs/ComponentManager.ts
 
-import { Entity } from "./entity";
+import { Entity } from "./entities/entity";
 import { IQuery } from "./queries/IQuery";
 import { ComponentStore } from "./components/ComponentStore";
 import { Component } from "./components/Component";
@@ -26,14 +26,24 @@ export class ComponentManager {
         }
     }
 
-    getComponent<T extends Component>(entity: Entity, componentType: ComponentType<T>): T | undefined {
-        const store = this.componentStores.get(componentType) as ComponentStore<T> | undefined;
-        return store ? store.get(entity) as T | undefined : undefined;
+    getComponent<T extends Component>(entity: Entity, componentType: ComponentType<T>): T {
+        const store = this.componentStores.get(componentType) as ComponentStore<T>;
+        if (!store) throw new Error(`Attempted to retrieve a component from entity ${entity}, but it does not exist.`);
+        return store.get(entity);
     }
 
     getEntitiesWithComponent(componentType: ComponentType): Entity[] {
         const store = this.componentStores.get(componentType);
         return store ? store.getAllEntities() : [];
+    }
+
+    removeAllComponents(entity: Entity) {
+        this.componentStores.forEach(store => store.remove(entity));
+    }
+
+    hasComponent(entity: Entity, componentType: ComponentType): boolean {
+        const store = this.componentStores.get(componentType);
+        return store ? store.has(entity) : false;
     }
 
     ///////////////////////////////

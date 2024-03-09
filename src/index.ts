@@ -1,30 +1,32 @@
 // index.ts
-import { GameSessionManager } from "./modules/GameSession/GameSessionManager";
 import { ConnectionManager } from './modules/server_networking/ConnectionManager';
 import { WebSocketMessageHandler as WebSocketMessageHandler } from './modules/server_networking/WebSocketMessageHandler';
-import { PlayerConnection } from "./modules/server_networking/PlayerConnection";
-import { HttpRequestHandler } from "./modules/server_networking/HttpRequestHandler";
 
-// Instantiate services used for validation and management
-const gameSessionManager = new GameSessionManager();
-const playerSessionValidationAndManagement = new PlayerConnection(gameSessionManager);
+import { HttpRequestHandler } from "./modules/server_networking/HttpRequestHandler";
+import { MasterGame } from "./modules/gameEngine/game/MasterGame";
+import { TypedEventEmitter } from "./modules/gameEngine/ecs/systems/TypedEventEmitter";
+
+// Instantiate the TypedEventEmitter
+const eventEmitter = new TypedEventEmitter();
+
+// Instantiate the MasterGame
+const masterGame = new MasterGame();
 
 // Instantiate http Request Handler
-const requestHandler = new HttpRequestHandler(
-    gameSessionManager
-);
+const requestHandler = new HttpRequestHandler(masterGame);
 
 // Instantiate WebSocket Message Handler
-const messageHandler = new WebSocketMessageHandler(
-    gameSessionManager, 
-    playerSessionValidationAndManagement
-);
+const messageHandler = new WebSocketMessageHandler(eventEmitter);
 
 // Instantiate the ConnectionManager with the MatchmakingQueue and PlayerSessionStore
 const connectionManager: ConnectionManager = new ConnectionManager(requestHandler, messageHandler);
 
+// Start the game
+masterGame.start();
+
 // Start the server
 connectionManager.listen();
+
 
 
 

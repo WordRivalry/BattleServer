@@ -1,9 +1,11 @@
 import { ComponentManager, ComponentType } from "../ComponentManager";
-import { Entity } from "../entity";
-import { EventSystem } from "./EventSystem";
+import { TypedEventEmitter } from "./TypedEventEmitter";
+import { EntityManager } from "../EntityManager";
+import { Entity } from "../entities/entity";
 
 export interface ISystem {
     requiredComponents: ComponentType[];
-    init?: (componentManager: ComponentManager, eventSystem: EventSystem) => void;
-    update: (entities: Entity[], deltaTime: number, componentManager: ComponentManager, eventSystem: EventSystem) => void;
+    init?: (entityManager: EntityManager, componentManager: ComponentManager, eventSystem: TypedEventEmitter) => void;
+    update: (deltaTime: number, entities: Entity[], componentManager: ComponentManager, eventSystem: TypedEventEmitter) => void;
 }
+

@@ -4,7 +4,7 @@ import { createScopedLogger } from '../logger/logger';
 import { NormalRankGameSession } from "./GameSessionType/NormalRankGameSession";
 import { BadSessionRequestError } from "../error/Error";
 import { EventEmitter } from "events";
-import {GameEvent} from "./GameEventsEmitter";
+import { GameEvent } from "./GameEventsEmitter";
 
 export interface PlayerMetadata {
     uuid: string;

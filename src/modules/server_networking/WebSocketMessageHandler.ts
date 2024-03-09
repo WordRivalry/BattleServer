@@ -3,19 +3,37 @@ import { WebSocket, RawData } from 'ws';
 import { IMessageHandler } from './WebSocketManager';
 import { UnknownPlayerError, UnknownGameSessionError, ValidationFailedError } from "../error/Error";
 import { MessageParsingService } from "./MessageParsingService";
-import { ActionType } from "./validation/messageType";
-import { EventEmitter } from 'stream';
+import { ActionType, PlayerAction } from "./validation/messageType";
 import { GameEvent } from "../GameSession/GameEventsEmitter";
+import { TypedEventEmitter } from "../gameEngine/ecs/systems/TypedEventEmitter";
 
-export class WebSocketMessageHandler extends EventEmitter implements IMessageHandler {
+export interface ConnectionPayload {
+    gameSessionUUID: string,
+    playerUUID: string,
+    socket: WebSocket
+}
 
-    emitSessionEvent(eventName: GameEvent, gameSessionUUID: string, ...args: any[]): boolean {
-        const scopedEventName = `${gameSessionUUID}:${eventName}`;
-        return super.emit(scopedEventName, ...args);
-    }
-    
+export interface PlayerActionPayload {
+    gameSessionUUID: string,
+    playerUUID: string,
+    action: PlayerAction
+}
+
+export interface PlayerDisconnectionPayload {
+    gameSessionUUID: string,
+    playerUUID: string
+}
+
+export class WebSocketMessageHandler implements IMessageHandler {
+
+    constructor(private eventSystem: TypedEventEmitter) {}
+
     public handleConnection(ws: WebSocket, playerUUID: string, gameSessionUUID: string): void {
-         this.emitSessionEvent(GameEvent.PLAYER_JOINED, gameSessionUUID, playerUUID, ws);
+         this.eventSystem.emitGeneric<ConnectionPayload>(GameEvent.PLAYER_JOINED, {
+            gameSessionUUID: gameSessionUUID,
+            playerUUID: playerUUID,
+            socket: ws
+         });
     }
 
     public handleMessage(message: RawData, playerUUID: string, gameSessionUUID: string): void {
@@ -23,10 +41,17 @@ export class WebSocketMessageHandler extends EventEmitter implements IMessageHan
 
         switch (parsedMessage.type) {
             case ActionType.PLAYER_LEFT_SESSION:
-                this.emitSessionEvent(GameEvent.PLAYER_LEFT, gameSessionUUID, playerUUID);
+                this.eventSystem.emitGeneric<PlayerDisconnectionPayload>(GameEvent.PLAYER_LEFT, {
+                    gameSessionUUID: gameSessionUUID,
+                    playerUUID: playerUUID
+                });
                 break;
             case ActionType.PLAYER_ACTION:
-                this.emitSessionEvent(GameEvent.PLAYER_ACTION, gameSessionUUID, playerUUID, parsedMessage);
+                this.eventSystem.emitGeneric<PlayerActionPayload>(GameEvent.PLAYER_ACTION, {
+                    gameSessionUUID: gameSessionUUID,
+                    playerUUID: playerUUID,
+                    action: parsedMessage
+                });
                 break;
             default:
                 throw new ValidationFailedError();
@@ -42,6 +67,9 @@ export class WebSocketMessageHandler extends EventEmitter implements IMessageHan
             throw new UnknownGameSessionError("Game session UUID is undefined");
         }
 
-        this.emitSessionEvent(GameEvent.PLAYER_LOST_CONNECTION, gameSessionUUID, playerUUID);
+        this.eventSystem.emitGeneric<PlayerDisconnectionPayload>(GameEvent.PLAYER_LOST_CONNECTION, {
+            gameSessionUUID: gameSessionUUID,
+            playerUUID: playerUUID
+        });
     }
 }

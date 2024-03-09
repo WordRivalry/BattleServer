@@ -1,14 +1,13 @@
 // src/ecs/systems/SomeSystem.ts
 import { ComponentManager } from "../ComponentManager";
 import { PositionComponent } from "../components/PositionComponent";
-
 import { IQuery } from "../queries/IQuery";
 
 export class SomeSystem {
     constructor(private componentManager: ComponentManager) {}
 
     update() {
-        const query = {
+        const query: IQuery = {
             all: [PositionComponent],
             conditions: [{
                 componentType: PositionComponent,

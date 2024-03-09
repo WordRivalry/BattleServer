@@ -2,37 +2,38 @@
 
 import {ISystem} from "./systems/System";
 import {ComponentManager} from "./ComponentManager";
-import {EventSystem} from "./systems/EventSystem";
+import {TypedEventEmitter} from "./systems/TypedEventEmitter";
+import {EntityManager} from "./EntityManager";
 
 export class SystemManager {
-    private systems: Array<{ system: ISystem, updateFrequency: number }> = [];
-    private lastUpdateTime: number = 0;
-    private componentManager: ComponentManager;
-    private eventSystem: EventSystem;
+    private systems: Array<{ system: ISystem, updateFrequency: number  }> = [];
+    private noUpdateSystems: ISystem[] = [];
+    private readonly entityManager: EntityManager;
+    private readonly componentManager: ComponentManager;
+    private readonly eventSystem: TypedEventEmitter;
 
-    constructor(componentManager: ComponentManager, eventSystem: EventSystem) {
+    constructor(entityManager: EntityManager, componentManager: ComponentManager, eventSystem: TypedEventEmitter) {
+        this.entityManager = entityManager;
         this.componentManager = componentManager;
         this.eventSystem = eventSystem;
     }
 
-    registerSystem(system: ISystem, updateFrequency: number = 1) {
+    registerSystem(system: ISystem, updateFrequency: number) {
         if(system.init) {
-            system.init(this.componentManager, this.eventSystem);
+            system.init(this.entityManager, this.componentManager, this.eventSystem);
         }
-        this.systems.push({ system, updateFrequency });
+
+        if (updateFrequency === 0) {
+            this.noUpdateSystems.push(system);
+        } else {
+            this.systems.push({system: system, updateFrequency });
+        }
     }
 
     update(deltaTime: number) {
-        const currentTime = performance.now();
-        if (this.lastUpdateTime === 0) this.lastUpdateTime = currentTime;
-
         this.systems.forEach(({ system, updateFrequency }) => {
-            if ((currentTime - this.lastUpdateTime) * updateFrequency >= deltaTime) {
-                const entities = this.componentManager.getEntitiesByQuery({ all: system.requiredComponents });
-                system.update(entities, deltaTime, this.componentManager, this.eventSystem);
-            }
+            const entities = this.componentManager.getEntitiesByQuery({ all: system.requiredComponents });
+            system.update(deltaTime, entities, this.componentManager, this.eventSystem);
         });
-
-        this.lastUpdateTime = currentTime;
     }
 }
