@@ -1,73 +1,58 @@
 // GameEngine.ts
 
-import {SystemManager} from "./SystemManager";
-import {EntityManager} from "./EntityManager";
-import {ComponentManager, ComponentType} from "./ComponentManager";
+import {SystemManager} from "./systems/SystemManager";
+import {EntityManager} from "./entities/EntityManager";
+import {ComponentManager} from "./components/ComponentManager";
 import {TypedEventEmitter} from "./systems/TypedEventEmitter";
-import {TimerSystem} from "./systems/TimerSystem";
-import {Entity} from "./entities/entity";
-import {Component} from "./components/Component";
-import {GlobalComponent} from "./components/GlobalComponent";
 import {EngineClock} from "./EngineClock";
+import {createScopedLogger} from "../../logger/logger";
+import {ECManager} from "./ECManager";
 
 export class GameEngine {
     public readonly systemManager: SystemManager;
-    public readonly entityManager: EntityManager;
-    public readonly componentManager: ComponentManager;
+    public readonly ecManager: ECManager;
     public readonly eventSystem: TypedEventEmitter;
     public readonly engineClock: EngineClock;
     running: boolean = false;
+    private logger = createScopedLogger('GameEngine');
 
-    constructor() {
-
+    constructor(eventEmitter: TypedEventEmitter) {
+        this.ecManager = new ECManager(new EntityManager(), new ComponentManager());
         this.engineClock = new EngineClock();
-        this.eventSystem = new TypedEventEmitter();
-        this.componentManager = new ComponentManager();
-        this.entityManager = new EntityManager(this.componentManager);
-
-        // Systems
-        this.systemManager = new SystemManager(this.entityManager, this.componentManager, this.eventSystem);
-        this.systemManager.registerSystem(new TimerSystem(), 1);
-
-        // Global entity queryable by GlobalComponent
-        const globalComponent = new GlobalComponent();
-        const createdEntity = this.entityManager.createEntity();
-        this.componentManager.addComponent(createdEntity, GlobalComponent, globalComponent);
+        this.eventSystem = eventEmitter;
+        this.systemManager = new SystemManager(this.ecManager, this.eventSystem);
     }
 
     public start(): void {
         this.running = true;
         this.eventSystem.emitGeneric("ECS_START", {});
         this.engineLoop();
+        this.logger.info("Game engine started");
     }
 
     public stop(): void {
         this.running = false;
         this.eventSystem.emitGeneric("ECS_STOP", {});
+        this.logger.info("Game engine stopped");
     }
 
-    public createEntity(): Entity {
-        return this.entityManager.createEntity();
-    }
-
-    public attachComponent<T extends Component>(entity: Entity, componentType: ComponentType<T>, component: T) {
-        this.componentManager.addComponent(entity, componentType, component);
-    }
-
-    public linkChildToParent(parent: Entity, child: Entity): void {
-        this.entityManager.addChild(parent, child);
+    public setTimeScale(timeScale: number): void {
+        this.engineClock.setTimeScale(timeScale);
     }
 
     private engineLoop(): void {
-        const tickRate = 50; // ms
+        const tickRate = 2000; // ms
         const update = () => {
             if (!this.running) return;
             const deltaTime = this.engineClock.update();
             this.systemManager.update(deltaTime);
+            // Process any commands that were queued during the update
+            this.ecManager.processCommands();
 
             // Aim to maintain a steady tick rate, adjusting for the actual time taken by the update
             const actualTimeTaken = performance.now() - this.engineClock.getLastUpdateTime()
             const nextTickDelay = Math.max(0, tickRate - actualTimeTaken);
+            this.logger.debug(`Next tick delay: ${nextTickDelay}`);
             setTimeout(update, nextTickDelay);
         };
         update();

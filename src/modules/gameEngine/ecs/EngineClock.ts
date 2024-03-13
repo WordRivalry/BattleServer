@@ -1,3 +1,5 @@
+// EngineClock.ts
+
 export class EngineClock {
     private lastUpdateTime = performance.now();
     private currentTime = 0;

@@ -4,8 +4,10 @@ import { IMessageHandler } from './WebSocketManager';
 import { UnknownPlayerError, UnknownGameSessionError, ValidationFailedError } from "../error/Error";
 import { MessageParsingService } from "./MessageParsingService";
 import { ActionType, PlayerAction } from "./validation/messageType";
-import { GameEvent } from "../GameSession/GameEventsEmitter";
 import { TypedEventEmitter } from "../gameEngine/ecs/systems/TypedEventEmitter";
+import {GameEvent} from "../gameEngine/ecs/systems/NetworkSystem";
+import {GlobalInputEventQueue} from "../gameEngine/ecs/components/inputs/GlobalInputEventQueue";
+import {InputEvent} from "../gameEngine/ecs/components/inputs/InputEvent";
 
 export interface ConnectionPayload {
     gameSessionUUID: string,
@@ -29,7 +31,7 @@ export class WebSocketMessageHandler implements IMessageHandler {
     constructor(private eventSystem: TypedEventEmitter) {}
 
     public handleConnection(ws: WebSocket, playerUUID: string, gameSessionUUID: string): void {
-         this.eventSystem.emitGeneric<ConnectionPayload>(GameEvent.PLAYER_JOINED, {
+         this.eventSystem.emitGeneric<ConnectionPayload>(GameEvent.PLAYER_CONNECTS, {
             gameSessionUUID: gameSessionUUID,
             playerUUID: playerUUID,
             socket: ws

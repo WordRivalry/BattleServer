@@ -1,31 +1,36 @@
-import { ISystem } from "./System";
-import { TimerComponent } from "../components/TimerComponent";
-import { Entity } from "../entities/entity";
-import { ComponentManager } from "../ComponentManager";
+// TimerSystem.ts
+import {ISystem} from "./System";
+import {TimerComponent} from "../components/TimerComponent";
+import {createScopedLogger} from "../../../logger/logger";
+import {ECManager} from "../ECManager";
 
 export class TimerSystem implements ISystem {
     requiredComponents = [TimerComponent];
+    private logger = createScopedLogger('TimerSystem');
 
-    update(deltaTime: number, entities: Entity[], componentManager: ComponentManager): void {
+    update(deltaTime: number, entities: number[], ecsManager: ECManager): void {
         entities.forEach(entity => {
-            const timeComponent = componentManager.getComponent<TimerComponent>(entity, TimerComponent);
-
-            if (timeComponent && timeComponent.isActive) {
+            const timeComponent = ecsManager.getComponent(entity, TimerComponent);
+            if (timeComponent.isActive) {
                 timeComponent.elapsedTime += deltaTime;
+
+                this.logger.debug(`Timer for entity ${entity} has elapsed time of ${timeComponent.elapsedTime} and duration of ${timeComponent.duration}`);
 
                 if (timeComponent.duration > 0 && timeComponent.elapsedTime >= timeComponent.duration) {
                     if (timeComponent.callback) {
                         try {
                             timeComponent.callback();
+                            this.logger.debug(`Timer callback executed for entity ${entity}`);
                         } catch (error) {
-                            console.error('Error executing timer callback:', error);
+                            this.logger.error(`Error in timer callback: ${error}`);
+                            throw error;
                         }
                     }
 
                     if (timeComponent.repeat) {
                         timeComponent.elapsedTime -= timeComponent.duration; // Allows for precise timing over multiple repeats
                     } else {
-                        componentManager.removeComponent(entity, TimerComponent);
+                        ecsManager.removeComponent(entity, TimerComponent);
                     }
                 }
             }

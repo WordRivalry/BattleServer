@@ -1,10 +1,10 @@
 
 import { PlayerMetadata } from '../GameSession/GameSessionManager';
-import { MasterGame } from "../gameEngine/game/MasterGame";
+import { Arena } from "../gameEngine/game/Arena";
 import { GameMode, ModeType } from "./validation/messageType";
 
 export class HttpRequestHandler {
-    constructor(private masterGame: MasterGame) {}
+    constructor(private masterGame: Arena) {}
 
     public handleRequestAlloc(playersMetadata: PlayerMetadata[], gameMode: string, modeType: string): string {
         const gameModeEnum = this.toGameMode(gameMode);
@@ -14,7 +14,7 @@ export class HttpRequestHandler {
             throw new Error("Invalid game mode or mode type provided.");
         }
 
-        return this.masterGame.createGame(playersMetadata, gameModeEnum, modeTypeEnum);
+        return this.masterGame.createMatch(playersMetadata, gameModeEnum, modeTypeEnum);
     }
 
     private toGameMode(value: string): GameMode | undefined {

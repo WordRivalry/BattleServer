@@ -79,11 +79,11 @@ export class WebSocketManager {
                 if (code === 1001) return; // Normal closure
 
                 if (code === 1006) {
-                    this.logger.context("setupWebSocketServer").info('Client closed connection unexpectedly');
+                    this.logger.context("setupWebSocketServer").error('Client closed connection unexpectedly');
                 }
 
                 if (code === 1008) {
-                    this.logger.context("setupWebSocketServer").info('Client closed connection due to an error');
+                    this.logger.context("setupWebSocketServer").error('Client closed connection due to an error');
                 }
 
                 try {

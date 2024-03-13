@@ -1,0 +1,113 @@
+// StateMachineSystem.test.ts
+import {IState} from "../../../../src/modules/gameEngine/ecs/components/StateMachine/IState";
+import {
+    StateMachineComponent
+} from "../../../../src/modules/gameEngine/ecs/components/StateMachine/StateMachineComponent";
+import {ECManager} from "../../../../src/modules/gameEngine/ecs/ECManager";
+import {EntityManager} from "../../../../src/modules/gameEngine/ecs/entities/EntityManager";
+import {ComponentManager} from "../../../../src/modules/gameEngine/ecs/components/ComponentManager";
+import {StateMachineSystem} from "../../../../src/modules/gameEngine/ecs/systems/StateMachineSystem";
+import {TypedEventEmitter} from "../../../../src/modules/gameEngine/ecs/systems/TypedEventEmitter";
+
+class MockState implements IState {
+    public name: string;
+    constructor(name: string) {
+        this.name = name;
+    }
+
+    enter = jest.fn();
+    update = jest.fn();
+    exit = jest.fn();
+}
+
+const conditionTrue = jest.fn().mockReturnValue(true);
+const conditionFalse = jest.fn().mockReturnValue(false);
+
+describe('StateMachineComponent Transitions', () => {
+    let stateMachine: StateMachineComponent;
+    let initialState: MockState;
+    let nextState: MockState;
+    let ecManager: ECManager;
+    let entity: number;
+
+    beforeEach(() => {
+        initialState = new MockState('Initial');
+        nextState = new MockState('Next');
+        stateMachine = new StateMachineComponent(initialState);
+        ecManager = new ECManager(new EntityManager(), new ComponentManager());
+        entity = ecManager.createEntity();
+        ecManager.addComponent(entity, StateMachineComponent, stateMachine);
+    });
+
+    test('transitions to the next state on condition', () => {
+        stateMachine.addTransition(initialState, nextState, conditionTrue);
+
+        // Simulate update cycle where transition condition is met
+        const stateMachineSystem = new StateMachineSystem();
+        stateMachineSystem.update(0, [entity], ecManager, new TypedEventEmitter());
+
+        expect(initialState.exit).toHaveBeenCalledWith(0, ecManager);
+        expect(nextState.enter).toHaveBeenCalledWith(0, ecManager);
+        expect(stateMachine.currentState).toBe(nextState);
+    });
+
+    test('stays in the current state when condition is not met', () => {
+        stateMachine.addTransition(initialState, nextState, conditionFalse);
+
+        // Simulate update cycle where transition condition is not met
+        const stateMachineSystem = new StateMachineSystem();
+        stateMachineSystem.update(0, [0], ecManager, new TypedEventEmitter());
+
+        expect(initialState.exit).not.toHaveBeenCalled();
+        expect(nextState.enter).not.toHaveBeenCalled();
+        expect(stateMachine.currentState).toBe(initialState);
+    });
+
+    test('current state update is called during system update', () => {
+        stateMachine.addTransition(initialState, nextState, conditionFalse); // Condition that prevents transition
+
+        // Simulate update cycle
+        const stateMachineSystem = new StateMachineSystem();
+        stateMachineSystem.update(0, [0], ecManager, new TypedEventEmitter());
+
+        expect(initialState.update).toHaveBeenCalledWith(0, ecManager);
+    });
+
+    test('evaluates multiple transitions, executing only the first valid one', () => {
+        let anotherState = new MockState('Another');
+        stateMachine.addTransition(initialState, nextState, conditionFalse); // This condition will not be met
+        stateMachine.addTransition(initialState, anotherState, conditionTrue); // This condition will be met
+
+        const stateMachineSystem = new StateMachineSystem();
+        stateMachineSystem.update(0, [0], ecManager, new TypedEventEmitter());
+
+        expect(nextState.enter).not.toHaveBeenCalled();
+        expect(anotherState.enter).toHaveBeenCalledWith(0, ecManager);
+        expect(stateMachine.currentState).toBe(anotherState);
+    });
+
+    test('does nothing when no transitions are defined for the current state', () => {
+        // No transitions added for initialState
+
+        const stateMachineSystem = new StateMachineSystem();
+        stateMachineSystem.update(0, [entity], ecManager, new TypedEventEmitter());
+
+        expect(initialState.exit).not.toHaveBeenCalled();
+        expect(initialState.enter).not.toHaveBeenCalled();
+        expect(initialState.update).toHaveBeenCalledWith(entity, ecManager); // Ensures current state is still updated
+    });
+
+    const conditionThrows = jest.fn().mockImplementation(() => { throw new Error("Error during condition"); });
+
+    test('handles exceptions in transition conditions gracefully', () => {
+        stateMachine.addTransition(initialState, nextState, conditionThrows);
+
+        const stateMachineSystem = new StateMachineSystem();
+        expect(() => {
+            stateMachineSystem.update(0, [entity], ecManager, new TypedEventEmitter());
+        }).toThrow();
+
+        expect(initialState.exit).not.toHaveBeenCalled();
+        expect(nextState.enter).not.toHaveBeenCalled(); // Ensure no transition occurs on error
+    });
+});

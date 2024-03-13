@@ -1,8 +1,8 @@
 // messageTypes.ts
 
-import { Path } from "../../gameEngine/GameEngine";
-
-
+export type Row = number;
+export type Col = number;
+export type Path = [Row, Col][];
 
 export enum GameMode {
     RANK = 'RANK',
@@ -79,4 +79,16 @@ export interface PlayerAction_SendChatMessage {
     type: ActionType.PLAYER_ACTION;
     payload: SendChatMessageAction;
 }
+
+export interface Grid_fetch_data {
+    // grid : [ [Array], [Array], [Array], [Array], [Array] ]
+    grid: string[][],
+    stats: {
+        difficulty_rating: number,
+        diversity_rating: number,
+        total_words: number
+    },
+    valid_words: string[]
+}
+
 

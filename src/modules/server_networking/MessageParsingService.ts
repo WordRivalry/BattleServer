@@ -9,10 +9,41 @@ import {
     InvalidPlayerActionError,
     ValidationFailedError
 } from "../error/Error";
-import { JoinGameSessionAction, LeaveGameSessionAction, PlayerAction, WebSocketAction, ActionType, PlayerAction_PublishWord, PlayerAction_SendChatMessage, PlayerActionType } from './validation/messageType';
-import { actionFormatSchema, joinGameSessionActionSchema, leaveGameSessionActionSchema, playerActionSchema, playerAction_PublishWord, playerAction_SendChatMessage } from './validation/validationSchema';
+import {
+    JoinGameSessionAction,
+    LeaveGameSessionAction,
+    PlayerAction,
+    WebSocketAction,
+    ActionType,
+    PlayerAction_PublishWord,
+    PlayerAction_SendChatMessage,
+    PlayerActionType,
+    Grid_fetch_data
+} from './validation/messageType';
+import {
+    actionFormatSchema,
+    joinGameSessionActionSchema,
+    leaveGameSessionActionSchema,
+    playerActionSchema,
+    playerAction_PublishWord,
+    playerAction_SendChatMessage,
+    grid_fetch_data
+} from './validation/validationSchema';
+import {createScopedLogger} from "../logger/logger";
 
 export class MessageParsingService {
+
+    private static logger = createScopedLogger('MessageParsingService');
+
+    public static parseAndValidationHttpResponse(data: any): Grid_fetch_data {
+        const validation = grid_fetch_data.validate(data, { allowUnknown: false });
+        if (validation.error) {
+            throw new InvalidActionFormatError(validation.error);
+        }
+        // MessageParsingService.logger.info('Grid_fetch_data validation passed');
+        return validation.value;
+    }
+
     public static parseAndValidateMessage(message: RawData): JoinGameSessionAction | LeaveGameSessionAction | PlayerAction {
         const json = this.messageToJSON(message);
 
@@ -22,6 +53,7 @@ export class MessageParsingService {
         }
 
         const action: WebSocketAction = actionFormatValidation.value;
+        MessageParsingService.logger.info('Action format validation passed');
         return this.validateAction(action);
     }
 
@@ -42,6 +74,7 @@ export class MessageParsingService {
             case ActionType.PLAYER_ACTION:
                 return this.validatePlayerAction(action);
             default:
+                MessageParsingService.logger.error('Not a valid action type');
                 throw new ValidationFailedError()
         }
     }
@@ -49,6 +82,7 @@ export class MessageParsingService {
     private static validateJoinGameSessionAction(action: WebSocketAction): JoinGameSessionAction {
         const validation = joinGameSessionActionSchema.validate(action, { allowUnknown: false });
         if (validation.error) {
+            MessageParsingService.logger.error('JoinGameSessionAction validation failed');
             throw new InvalidJoinGameSessionActionError(validation.error);
         }
         return validation.value;
@@ -57,6 +91,7 @@ export class MessageParsingService {
     private static validateLeaveGameSessionAction(action: WebSocketAction): LeaveGameSessionAction {
         const validation = leaveGameSessionActionSchema.validate(action, { allowUnknown: false });
         if (validation.error) {
+            MessageParsingService.logger.error('LeaveGameSessionAction validation failed');
             throw new InvalidLeaveGameSessionActionError(validation.error);
         }
         return validation.value;
@@ -66,6 +101,7 @@ export class MessageParsingService {
 
         const playerAction = playerActionSchema.validate(action, { allowUnknown: false });
         if (playerAction.error) {
+            MessageParsingService.logger.error('PlayerAction validation failed');
             throw new InvalidPlayerActionError(playerAction.error);
         }
 
@@ -86,6 +122,7 @@ export class MessageParsingService {
     private static validatePlayerActionPayload_PublishWord(action: WebSocketAction): PlayerAction_PublishWord {
         const validation = playerAction_PublishWord.validate(action);
         if (validation.error) {
+            MessageParsingService.logger.error('PlayerAction_PublishWord validation failed');
             throw new InvalidPlayerAction_PublishWordError(validation.error);
         }
         return validation.value;
@@ -94,6 +131,7 @@ export class MessageParsingService {
     private static validatePlayerActionPayload_SendChatMessage(action: WebSocketAction): PlayerAction_SendChatMessage {
         const validation = playerAction_SendChatMessage.validate(action);
         if (validation.error) {
+            MessageParsingService.logger.error('PlayerAction_SendChatMessage validation failed');
             throw new InvalidPlayerAction_SendChatMessageError(validation.error);
         }
         return validation.value;

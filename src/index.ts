@@ -3,26 +3,23 @@ import { ConnectionManager } from './modules/server_networking/ConnectionManager
 import { WebSocketMessageHandler as WebSocketMessageHandler } from './modules/server_networking/WebSocketMessageHandler';
 
 import { HttpRequestHandler } from "./modules/server_networking/HttpRequestHandler";
-import { MasterGame } from "./modules/gameEngine/game/MasterGame";
+import { Arena } from "./modules/gameEngine/game/Arena";
 import { TypedEventEmitter } from "./modules/gameEngine/ecs/systems/TypedEventEmitter";
 
 // Instantiate the TypedEventEmitter
 const eventEmitter = new TypedEventEmitter();
 
 // Instantiate the MasterGame
-const masterGame = new MasterGame();
+const arena = new Arena(eventEmitter);
 
 // Instantiate http Request Handler
-const requestHandler = new HttpRequestHandler(masterGame);
+const requestHandler = new HttpRequestHandler(arena);
 
 // Instantiate WebSocket Message Handler
 const messageHandler = new WebSocketMessageHandler(eventEmitter);
 
 // Instantiate the ConnectionManager with the MatchmakingQueue and PlayerSessionStore
 const connectionManager: ConnectionManager = new ConnectionManager(requestHandler, messageHandler);
-
-// Start the game
-masterGame.start();
 
 // Start the server
 connectionManager.listen();

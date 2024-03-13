@@ -1,27 +1,28 @@
 // GridPoolSystem.ts
-
-import axios from "axios";
-import config from "../../../../../config";
-import { ISystem } from "../../ecs/systems/System";
-import { GridPoolComponent } from "../components/game/GridPoolComponent";
-import { ComponentManager } from "../../ecs/ComponentManager";
-import { TypedEventEmitter } from "../../ecs/systems/TypedEventEmitter";
-import { GridComponent } from "../components/game/GridComponent";
-import { EntityManager } from "../../ecs/EntityManager";
+import {ISystem} from "../../ecs/systems/System";
+import {GridPoolComponent} from "../components/game/GridPoolComponent";
+import {TypedEventEmitter} from "../../ecs/systems/TypedEventEmitter";
+import {GridComponent} from "../components/game/GridComponent";
 import LetterComponent from "../components/game/LetterComponent";
-import {Entity} from "../../ecs/entities/entity";
+import {GlobalComponent} from "../../ecs/components/GlobalComponent";
+import {createScopedLogger} from "../../../logger/logger";
+import {MessageParsingService} from "../../../server_networking/MessageParsingService";
+import {ECManager} from "../../ecs/ECManager";
+import config from "../../../../../config";
+import axios from "axios";
 
 export class GridPoolSystem implements ISystem {
     requiredComponents = [GridPoolComponent];
+    private logger = createScopedLogger('GridPoolSystem');
 
-    public init(entityManager: EntityManager, componentManager: ComponentManager, eventSystem: TypedEventEmitter): void {
+    public init(ecManager: ECManager, eventSystem: TypedEventEmitter): void {
 
         // Get the global entity
-        const globalEntity = entityManager.getGlobalEntity();
+        const globalEntity = ecManager.getEntitiesWithComponent(GlobalComponent)[0];
 
         // Add Grid pool component to the global entity
         const gridPoolComponent = new GridPoolComponent();
-        componentManager.addComponent(globalEntity, GridPoolComponent, gridPoolComponent);
+        ecManager.addComponent(globalEntity, GridPoolComponent, gridPoolComponent);
 
         // Preload the pool
         this.loadPool(gridPoolComponent, 50)
@@ -33,24 +34,24 @@ export class GridPoolSystem implements ISystem {
             });
     }
 
-    public update(deltaTime: number, entities: Entity[], componentManager: ComponentManager, eventSystem: TypedEventEmitter): void {
+    public update(_deltaTime: number, entities: number[], ecManager: ECManager, eventSystem: TypedEventEmitter): void {
 
-        // Get the grid pool component
-        const gridPoolComponent = componentManager.getComponent(entities[0], GridPoolComponent);
-        if (!gridPoolComponent) {
-            throw new Error("Grid pool component not found");
-        }
-
-        // If the pool is running low, refill it
-        if (gridPoolComponent.gridPool.length < 25) {
-            this.loadPool(gridPoolComponent, 25)
-                .then(() => {
-                    eventSystem.emitGeneric('gridPoolRefilled', undefined)
-                })
-                .catch((error) => {
-                    console.error("Failed to refill grid pool:", error);
-                });
-        }
+        // // Get the grid pool component
+        // const gridPoolComponent = componentManager.getComponent(entities[0], GridPoolComponent);
+        // if (!gridPoolComponent) {
+        //     throw new Error("Grid pool component not found");
+        // }
+        //
+        // // If the pool is running low, refill it
+        // if (gridPoolComponent.gridPool.length < 25) {
+        //     this.loadPool(gridPoolComponent, 25)
+        //         .then(() => {
+        //             eventSystem.emitGeneric('gridPoolRefilled', undefined)
+        //         })
+        //         .catch((error) => {
+        //             console.error("Failed to refill grid pool:", error);
+        //         });
+        // }
     }
 
     private async loadPool(gridPoolComponent: GridPoolComponent, size: number): Promise<void> {
@@ -59,11 +60,16 @@ export class GridPoolSystem implements ISystem {
             promises.push(this.generateGrid());
         }
 
+
+
         try {
-            const grids = await Promise.all(promises);
-            grids.forEach(grid => gridPoolComponent.gridPool.push(
+            const responses = await Promise.all(promises);
+
+            // Validate
+            responses.forEach(response => MessageParsingService.parseAndValidationHttpResponse(response.data));
+            responses.forEach(response => gridPoolComponent.gridPool.push(
                 new GridComponent(
-                    grid.map((row: string[]) =>
+                    response.data.grid.map((row: string[]) =>
                         row.map((letter: string): LetterComponent => ({
                             letter: letter.toUpperCase(),
                             value: this.getLetterScore(letter.toUpperCase()), // You need to implement this method based on your scoring system
@@ -79,7 +85,7 @@ export class GridPoolSystem implements ISystem {
         }
     }
 
-    private generateGrid(): Promise<string[][]> {
+    private generateGrid(): Promise<any> {
         const minDiversity: number = 0
         const maxDiversity: number = 1
         const minDifficulty: number = 0

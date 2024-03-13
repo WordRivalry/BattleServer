@@ -1,7 +1,7 @@
 // src/validation/validationSchema.ts
 import Joi from 'joi';
 import {
-    ActionType,
+    ActionType, Grid_fetch_data,
     JoinGameSessionAction,
     PlayerAction, PlayerAction_PublishWord, PlayerAction_SendChatMessage,
     PlayerActionType,
@@ -66,6 +66,16 @@ export const playerAction_SendChatMessage = Joi.object<PlayerAction_SendChatMess
     payload: sendChatMessageActionSchema.required()
 });
 
+
+export const grid_fetch_data = Joi.object<Grid_fetch_data>({
+    grid: Joi.array().items(Joi.array().items(Joi.string())).required(),
+    stats: Joi.object({
+        difficulty_rating: Joi.number().required(),
+        diversity_rating: Joi.number().required(),
+        total_words: Joi.number().required()
+    }).required(),
+    valid_words: Joi.array().items(Joi.string()).required()
+});
 
 
 

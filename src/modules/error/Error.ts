@@ -7,13 +7,15 @@ export class ErrorHandlingService {
     static logger = createScopedLogger('ErrorHandlingService');
 
     static sendError(ws: WebSocket, error: any) {
-        if (error instanceof CustomError) {
+        if (error instanceof Error) {
+            ws.close(1008, JSON.stringify({ type: 'error', code: 1008, message: error.message }));
+        } else if (error instanceof CustomError) {
             const message = error.toWebSocketMessage();
             ErrorHandlingService.logger.context(error.name).error(message, { error });
             ws.close(1008, message);
             return;
         } else {
-            ws.close(1008, JSON.stringify({ type: 'error', code: 1008, message: 'An unexpected error occurred' }));
+            ws.close(1008, JSON.stringify({ type: 'error', code: 1008, message: 'Unknown error' }));
         }
     }
 }
@@ -37,9 +39,10 @@ export class CustomError extends Error {
 
     private sanitizedData() {
         return {
-            type: this.errorType,
+            type: this.name,
             statusCode: this.statusCode,
-            // message: this.message
+            message: this.message,
+            cause: this.cause
         };
     }
 

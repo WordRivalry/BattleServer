@@ -1,25 +1,18 @@
 import {GameEngine} from "../../../src/modules/gameEngine/ecs/GameEngine";
 import {GlobalComponent} from "../../../src/modules/gameEngine/ecs/components/GlobalComponent";
-import {Component} from "../../../src/modules/gameEngine/ecs/components/Component";
 import {ISystem} from "../../../src/modules/gameEngine/ecs/systems/System";
 import {TypedEventEmitter} from "../../../src/modules/gameEngine/ecs/systems/TypedEventEmitter";
-import {ComponentManager} from "../../../src/modules/gameEngine/ecs/ComponentManager";
-import {Entity} from "../../../src/modules/gameEngine/ecs/entities/entity";
+import {ECManager} from "../../../src/modules/gameEngine/ecs/ECManager";
+import {Component} from "../../../src/modules/gameEngine/ecs/components/Component";
 
-class TestComponent extends Component {
-    value: number;
-
-    constructor(value: number) {
-        super();
-        this.value = value;
-    }
+class ComponentA extends Component {
 }
 
 class MockSystem implements ISystem {
-    requiredComponents = [];
+    requiredComponents = [ComponentA];
     lastDeltaTime: number | null = null;
 
-    update(deltaTime: number, entities: Entity[], componentManager: ComponentManager, eventSystem: TypedEventEmitter): void {
+    update(deltaTime: number, entities: number[], ecsManager: ECManager, eventSystem: TypedEventEmitter): void {
         this.lastDeltaTime = deltaTime;
     }
 }
@@ -28,7 +21,7 @@ describe('GameEngine', () => {
     let gameEngine: GameEngine;
 
     beforeEach(() => {
-        gameEngine = new GameEngine();
+        gameEngine = new GameEngine(new TypedEventEmitter());
     });
 
     afterEach(() => {
@@ -46,16 +39,11 @@ describe('GameEngine', () => {
             expect(gameEngine.running).toBe(false);
         });
 
-        it('should correctly initialize with required systems and global entity', () => {
+        it('should correctly initialize with required systems', () => {
             expect(gameEngine.systemManager).toBeDefined();
-            expect(gameEngine.entityManager).toBeDefined();
-            expect(gameEngine.componentManager).toBeDefined();
+            expect(gameEngine.ecManager).toBeDefined();
             expect(gameEngine.eventSystem).toBeDefined();
             expect(gameEngine.engineClock).toBeDefined();
-
-            // Verify the global entity and its component
-            const globalEntities = gameEngine.componentManager.getEntitiesWithComponent(GlobalComponent);
-            expect(globalEntities.length).toBe(1);
         });
 
         it('should emit ECS_START and ECS_STOP events on start and stop', () => {
@@ -74,7 +62,7 @@ describe('GameEngine', () => {
         let gameEngine: GameEngine;
 
         beforeEach(() => {
-            gameEngine = new GameEngine();
+            gameEngine = new GameEngine(new TypedEventEmitter());
             jest.useFakeTimers();
         });
 
@@ -102,15 +90,16 @@ describe('GameEngine', () => {
         });
 
         it('should resume engine loop updates when restarted after being stopped', () => {
+
+            const mockUpdate = jest.fn();
+            gameEngine.systemManager.update = mockUpdate;
+
             // Restart the engine after stopping
             gameEngine.start();
             gameEngine.stop();
             gameEngine.start();
 
-            const mockUpdate = jest.fn();
-            gameEngine.systemManager.update = mockUpdate;
-
-            jest.advanceTimersByTime(50); // Advance by one tick rate duration after restart
+            jest.advanceTimersByTime(100); // Advance by one tick rate duration after restart
 
             // Validate that the update method was called after restart
             expect(mockUpdate).toHaveBeenCalled();
@@ -132,7 +121,7 @@ describe('GameEngine', () => {
         it('should adjust for actual time taken by updates in scheduling next tick', async () => {
             // Register a mock system to track deltaTime updates
             const mockSystem = new MockSystem();
-            gameEngine.systemManager.registerSystem(mockSystem, 1);
+            gameEngine.systemManager.registerSystem(mockSystem);
 
             gameEngine.start();
 
@@ -141,7 +130,7 @@ describe('GameEngine', () => {
             jest.spyOn(performance, 'now').mockReturnValueOnce(initialTime).mockReturnValueOnce(initialTime + 25);
 
             // Use fake timers to advance time
-            jest.advanceTimersByTime(500);
+            jest.advanceTimersByTime(10000);
 
             // Since we're not directly asserting on setTimeout timing due to Jest's limitations,
             // verify if the mock system received an update call with the expected deltaTime.
@@ -150,30 +139,6 @@ describe('GameEngine', () => {
             expect(mockSystem.lastDeltaTime).toBeGreaterThan(0); // Ensure deltaTime was positive
 
             gameEngine.stop();
-        });
-    });
-
-    describe('GameEngine Entity and Component Management', () => {
-
-        it('should allow for entity creation and component attachment', () => {
-            const entity = gameEngine.createEntity();
-            expect(entity).toBeDefined();
-
-            const testComponent = new TestComponent(1);
-            gameEngine.attachComponent(entity, TestComponent, testComponent);
-
-            const retrievedComponent = gameEngine.componentManager.getComponent(entity, TestComponent);
-            expect(retrievedComponent).toBe(testComponent);
-        });
-
-        it('should support linking entities in a parent-child relationship', () => {
-            const parent = gameEngine.createEntity();
-            const child = gameEngine.createEntity();
-
-            gameEngine.linkChildToParent(parent, child);
-
-            const children = gameEngine.entityManager.getChildren(parent);
-            expect(children).toContain(child);
         });
     });
 

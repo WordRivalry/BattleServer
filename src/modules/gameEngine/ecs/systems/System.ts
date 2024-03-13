@@ -1,11 +1,11 @@
-import { ComponentManager, ComponentType } from "../ComponentManager";
-import { TypedEventEmitter } from "./TypedEventEmitter";
-import { EntityManager } from "../EntityManager";
-import { Entity } from "../entities/entity";
+// ISystem.ts
+import {ComponentType} from "../components/ComponentManager";
+import {TypedEventEmitter} from "./TypedEventEmitter";
+import {ECManager} from "../ECManager";
 
 export interface ISystem {
     requiredComponents: ComponentType[];
-    init?: (entityManager: EntityManager, componentManager: ComponentManager, eventSystem: TypedEventEmitter) => void;
-    update: (deltaTime: number, entities: Entity[], componentManager: ComponentManager, eventSystem: TypedEventEmitter) => void;
+    init?: (ecsManager: ECManager, eventSystem: TypedEventEmitter) => void;
+    update: (deltaTime: number, entities: number[], ecsManager: ECManager, eventSystem: TypedEventEmitter) => void;
 }
 
