@@ -1,5 +1,4 @@
-import {ISystem} from "./System";
-import {Entity} from "../entities/entity";
+import {System} from "./System";
 import {ComponentManager, ComponentType} from "../components/ComponentManager";
 import {PlayerConnectionComponent} from "../components/player/PlayerConnectionComponent";
 import {TypedEventEmitter} from "./TypedEventEmitter";
@@ -21,7 +20,7 @@ export enum GameEvent {
     GAME_END = "GAME_END",
 }
 
-export class NetworkSystem implements ISystem {
+export class NetworkSystem extends System {
     private readonly reconnectionTimeouts: Map<string, NodeJS.Timeout> = new Map();
     private logger = createScopedLogger('NetworkSystem');
 

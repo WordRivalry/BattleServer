@@ -44,10 +44,11 @@ describe('StateMachineComponent Transitions', () => {
 
         // Simulate update cycle where transition condition is met
         const stateMachineSystem = new StateMachineSystem();
-        stateMachineSystem.update(0, [entity], ecManager, new TypedEventEmitter());
+        const eventSystem = new TypedEventEmitter();
+        stateMachineSystem.update(0, [entity], ecManager, eventSystem);
 
-        expect(initialState.exit).toHaveBeenCalledWith(0, ecManager);
-        expect(nextState.enter).toHaveBeenCalledWith(0, ecManager);
+        expect(initialState.exit).toHaveBeenCalledWith(entity, ecManager, eventSystem);
+        expect(nextState.enter).toHaveBeenCalledWith(entity, ecManager, eventSystem);
         expect(stateMachine.currentState).toBe(nextState);
     });
 
@@ -56,7 +57,7 @@ describe('StateMachineComponent Transitions', () => {
 
         // Simulate update cycle where transition condition is not met
         const stateMachineSystem = new StateMachineSystem();
-        stateMachineSystem.update(0, [0], ecManager, new TypedEventEmitter());
+        stateMachineSystem.update(0, [entity], ecManager, new TypedEventEmitter());
 
         expect(initialState.exit).not.toHaveBeenCalled();
         expect(nextState.enter).not.toHaveBeenCalled();
@@ -68,9 +69,10 @@ describe('StateMachineComponent Transitions', () => {
 
         // Simulate update cycle
         const stateMachineSystem = new StateMachineSystem();
-        stateMachineSystem.update(0, [0], ecManager, new TypedEventEmitter());
+        const eventSystem = new TypedEventEmitter();
+        stateMachineSystem.update(0, [entity], ecManager, eventSystem);
 
-        expect(initialState.update).toHaveBeenCalledWith(0, ecManager);
+        expect(initialState.update).toHaveBeenCalledWith(0, entity, ecManager, eventSystem);
     });
 
     test('evaluates multiple transitions, executing only the first valid one', () => {
@@ -79,10 +81,11 @@ describe('StateMachineComponent Transitions', () => {
         stateMachine.addTransition(initialState, anotherState, conditionTrue); // This condition will be met
 
         const stateMachineSystem = new StateMachineSystem();
-        stateMachineSystem.update(0, [0], ecManager, new TypedEventEmitter());
+        const eventSystem = new TypedEventEmitter();
+        stateMachineSystem.update(0, [entity], ecManager, eventSystem);
 
         expect(nextState.enter).not.toHaveBeenCalled();
-        expect(anotherState.enter).toHaveBeenCalledWith(0, ecManager);
+        expect(anotherState.enter).toHaveBeenCalledWith(entity, ecManager, eventSystem);
         expect(stateMachine.currentState).toBe(anotherState);
     });
 
@@ -90,11 +93,12 @@ describe('StateMachineComponent Transitions', () => {
         // No transitions added for initialState
 
         const stateMachineSystem = new StateMachineSystem();
-        stateMachineSystem.update(0, [entity], ecManager, new TypedEventEmitter());
+        const eventSystem = new TypedEventEmitter();
+        stateMachineSystem.update(0, [entity], ecManager, eventSystem);
 
         expect(initialState.exit).not.toHaveBeenCalled();
         expect(initialState.enter).not.toHaveBeenCalled();
-        expect(initialState.update).toHaveBeenCalledWith(entity, ecManager); // Ensures current state is still updated
+        expect(initialState.update).toHaveBeenCalledWith(0, entity, ecManager, eventSystem); // Ensures current state is still updated
     });
 
     const conditionThrows = jest.fn().mockImplementation(() => { throw new Error("Error during condition"); });
@@ -103,8 +107,9 @@ describe('StateMachineComponent Transitions', () => {
         stateMachine.addTransition(initialState, nextState, conditionThrows);
 
         const stateMachineSystem = new StateMachineSystem();
+        const eventSystem = new TypedEventEmitter();
         expect(() => {
-            stateMachineSystem.update(0, [entity], ecManager, new TypedEventEmitter());
+            stateMachineSystem.update(0, [entity], ecManager, eventSystem);
         }).toThrow();
 
         expect(initialState.exit).not.toHaveBeenCalled();

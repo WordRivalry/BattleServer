@@ -3,50 +3,10 @@ import {EntityManager} from "./entities/EntityManager";
 import {ComponentManager, ComponentType} from "./components/ComponentManager";
 import {Component} from "./components/Component";
 
-type ECCommandType = 'DestroyEntity';
-
-interface ECCommand {
-    type: ECCommandType;
-    entityId?: number;
-    componentType?: ComponentType;
-    component?: Component;
-}
-
 export class ECManager {
-    private archetypes: Map<string, Set<number>> = new Map();
-    private commandBuffer: ECCommand[] = [];
-
-    constructor(
-        private entityManager: EntityManager,
-        private componentManager: ComponentManager
-    ) {
-    }
-
-    // Command buffer methods
-
-    processCommands(): void {
-        this.commandBuffer.forEach(command => {
-            switch (command.type) {
-                case 'DestroyEntity':
-                    if (command.entityId !== undefined) {
-                        this._destroyEntity(command.entityId);
-                    }
-                    break;
-            }
-        });
-        this.commandBuffer = []; // Clear the buffer after processing
-    }
+    constructor(private entityManager: EntityManager, private componentManager: ComponentManager) {}
 
     destroyEntity(entityId: number): void {
-        this.enqueueCommand({ type: 'DestroyEntity', entityId });
-    }
-
-    private enqueueCommand(command: ECCommand): void {
-        this.commandBuffer.push(command);
-    }
-
-    private _destroyEntity(entityId: number): void {
-        this.removeFromArchetype(entityId);
         this.entityManager.destroyEntity(entityId);
         this.componentManager.removeAllComponents(entityId);
     }
@@ -55,7 +15,6 @@ export class ECManager {
 
     createEntity(): number {
         const entityId = this.entityManager.createEntity();
-        this.updateArchetype(entityId);
         return entityId;
     }
 
@@ -95,12 +54,10 @@ export class ECManager {
 
     addComponent<T extends Component>(entityId: number, componentType: ComponentType<T>, component: T): void {
         this.componentManager.addComponent(entityId, componentType, component);
-        this.updateArchetype(entityId);
     }
 
     removeComponent<T extends Component>(entityId: number, componentType: ComponentType<T>): void {
         this.componentManager.removeComponent(entityId, componentType);
-        this.updateArchetype(entityId);
     }
 
     getComponent<T extends Component>(entityId: number, componentType: ComponentType<T>): T {
@@ -127,36 +84,12 @@ export class ECManager {
         return this.componentManager.hasComponent(entityId, componentType);
     }
 
-    private updateArchetype(entityId: number): void {
-        // Calculate the entity's current archetype based on its components
-        const components = this.componentManager.getEntityComponentsType(entityId);
-        const archetypeKey = this.getArchetypeKey(components);
-
-        // Update the entity's archetype
-        this.removeFromArchetype(entityId); // Remove from old archetype if exists
-        if (!this.archetypes.has(archetypeKey)) {
-            this.archetypes.set(archetypeKey, new Set());
-        }
-        this.archetypes.get(archetypeKey)!.add(entityId);
+    queryEntities(): EntityQueryBuilder {
+        return new EntityQueryBuilder(this);
     }
 
-    private removeFromArchetype(entityId: number): void {
-        this.archetypes.forEach((entities, key) => {
-            if (entities.delete(entityId)) {
-                if (entities.size === 0) {
-                    this.archetypes.delete(key);
-                }
-            }
-        });
-    }
-
-    private getArchetypeKey(components: ComponentType[]): string {
-        // Generate a unique key for the archetype
-        return components.map(c => c.name).sort().join('_');
-    }
-
-    queryEntities(): QueryBuilder {
-        return new QueryBuilder(this);
+    queryComponents<T extends Component>(componentType: ComponentType<T>): ComponentQueryBuilder<T> {
+        return new ComponentQueryBuilder(this, componentType);
     }
 }
 
@@ -165,7 +98,7 @@ interface ComponentCondition<T extends Component> {
     condition: (component: T) => boolean;
 }
 
-export class QueryBuilder {
+export class EntityQueryBuilder {
     private ecsManager: ECManager;
     private includeComponents: ComponentType<Component>[] = [];
     private excludeComponents: ComponentType<Component>[] = [];
@@ -180,72 +113,72 @@ export class QueryBuilder {
         this.ecsManager = ecsManager;
     }
 
-    withComponent<T extends Component>(componentType: ComponentType<T>): QueryBuilder {
+    withComponent<T extends Component>(componentType: ComponentType<T>): EntityQueryBuilder {
         this.includeComponents.push(componentType);
         return this;
     }
 
-    withComponents(components: ComponentType<Component>[]): QueryBuilder {
+    withComponents(components: ComponentType<Component>[]): EntityQueryBuilder {
         this.includeComponents.push(...components);
         return this;
     }
 
-    withComponentCondition<T extends Component>(componentType: ComponentType<T>, condition: (component: T) => boolean): QueryBuilder {
+    withComponentCondition<T extends Component>(componentType: ComponentType<T>, condition: (component: T) => boolean): EntityQueryBuilder {
         this.componentConditions.push({componentType, condition});
         return this;
     }
 
-    withoutComponent<T extends Component>(componentType: ComponentType<T>): QueryBuilder {
+    withoutComponent<T extends Component>(componentType: ComponentType<T>): EntityQueryBuilder {
         this.excludeComponents.push(componentType);
         return this;
     }
 
-    withoutComponents(components: ComponentType<Component>[]): QueryBuilder {
+    withoutComponents(components: ComponentType<Component>[]): EntityQueryBuilder {
         this.excludeComponents.push(...components);
         return this;
     }
 
-    withTag(tag: number): QueryBuilder {
+    withTag(tag: number): EntityQueryBuilder {
         this.includeTags.push(tag);
         return this;
     }
 
-    withTags(tags: number[]): QueryBuilder {
+    withTags(tags: number[]): EntityQueryBuilder {
         this.includeTags.push(...tags);
         return this;
     }
 
-    withoutTag(tag: number): QueryBuilder {
+    withoutTag(tag: number): EntityQueryBuilder {
         this.excludeTags.push(tag);
         return this;
     }
 
-    withoutTags(tags: number[]): QueryBuilder {
+    withoutTags(tags: number[]): EntityQueryBuilder {
         this.excludeTags.push(...tags);
         return this;
     }
 
-    withParent(parentId: number): QueryBuilder {
+    withParent(parentId: number): EntityQueryBuilder {
         this.parent = parentId;
         return this;
     }
 
-    withChild(childId: number): QueryBuilder {
+    withChild(childId: number): EntityQueryBuilder {
         this.includeChildren.push(childId);
         return this;
     }
 
-    withChildren(children: number[]): QueryBuilder {
+    withChildren(children: number[]): EntityQueryBuilder {
         this.includeChildren.push(...children);
         return this;
     }
 
-    withoutChild(childId: number): QueryBuilder {
+    withoutChild(childId: number): EntityQueryBuilder {
         this.excludeChildren.push(childId);
         return this;
     }
 
-    withoutChildren(children: number[]): QueryBuilder {
+    withoutChildren(children: number[]): EntityQueryBuilder {
         this.excludeChildren.push(...children);
         return this;
     }
@@ -304,5 +237,81 @@ export class QueryBuilder {
         });
 
         return resultEntities;
+    }
+}
+
+// Assuming ECManager and other related types are already defined
+
+export class ComponentQueryBuilder<T extends Component> {
+    private ecsManager: ECManager;
+    private readonly componentType: ComponentType<T>;
+    private conditions: ((component: T) => boolean)[] = [];
+    private sortComparer: ((a: T, b: T) => number) | null = null;
+    private limit: number | null = null;
+    private offset: number = 0;
+    private parentEntity: number | null = null;
+
+    constructor(ecsManager: ECManager, componentType: ComponentType<T>) {
+        this.ecsManager = ecsManager;
+        this.componentType = componentType;
+    }
+
+    forEntitiesWithParent(parentEntity: number): ComponentQueryBuilder<T> {
+        this.parentEntity = parentEntity;
+        return this;
+    }
+
+    // Adds a condition for querying components
+    where(condition: (component: T) => boolean): ComponentQueryBuilder<T> {
+        this.conditions.push(condition);
+        return this;
+    }
+
+    // Allows sorting of the query results
+    sortBy(comparer: (a: T, b: T) => number): ComponentQueryBuilder<T> {
+        this.sortComparer = comparer;
+        return this;
+    }
+
+    // Sets the maximum number of components to return
+    take(limit: number): ComponentQueryBuilder<T> {
+        this.limit = limit;
+        return this;
+    }
+
+    // Sets the number of components to skip before starting to return the results
+    skip(offset: number): ComponentQueryBuilder<T> {
+        this.offset = offset;
+        return this;
+    }
+
+    // Executes the query based on the specified conditions and options
+    execute(): T[] {
+        let entitiesWithComponent;
+
+        if (this.parentEntity !== null) {
+            entitiesWithComponent = this.ecsManager.queryEntities()
+                .withComponent(this.componentType)
+                .withParent(this.parentEntity)
+                .execute();
+        } else {
+            entitiesWithComponent = this.ecsManager.getEntitiesWithComponent(this.componentType);
+        }
+
+        let components = entitiesWithComponent
+            .map(entityId => this.ecsManager.getComponent(entityId, this.componentType))
+            .filter(component => this.conditions.every(condition => condition(component)));
+
+        if (this.sortComparer) {
+            components.sort(this.sortComparer);
+        }
+
+        if (this.limit !== null) {
+            components = components.slice(this.offset, this.offset + this.limit);
+        } else if (this.offset > 0) {
+            components = components.slice(this.offset);
+        }
+
+        return components;
     }
 }

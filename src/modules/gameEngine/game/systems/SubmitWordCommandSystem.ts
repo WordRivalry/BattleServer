@@ -1,7 +1,7 @@
 // SubmitWordCommandSystem.ts
 import {SubmitWordCommandComponent} from "../components/SubmitWordCommandComponent";
 import {ComponentType} from "../../ecs/components/ComponentManager";
-import {ISystem} from "../../ecs/systems/System";
+import {System} from "../../ecs/systems/System";
 import {ECManager} from "../../ecs/ECManager";
 import {TypedEventEmitter} from "../../ecs/systems/TypedEventEmitter";
 import {GameIdentityComponent} from "../components/game/GameIdentityComponent";
@@ -11,7 +11,7 @@ import {createScopedLogger} from "../../../logger/logger";
 import {Path} from "../../../server_networking/validation/messageType";
 import {ScoreComponent} from "../components/ScoreComponent";
 
-export class SubmitWordCommandSystem implements ISystem {
+export class SubmitWordCommandSystem extends System {
     private logger = createScopedLogger('SubmitWordCommandSystem');
     requiredComponents: ComponentType[] = [SubmitWordCommandComponent];
 

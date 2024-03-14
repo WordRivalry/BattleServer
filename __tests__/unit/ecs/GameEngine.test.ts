@@ -1,14 +1,12 @@
 import {GameEngine} from "../../../src/modules/gameEngine/ecs/GameEngine";
-import {GlobalComponent} from "../../../src/modules/gameEngine/ecs/components/GlobalComponent";
-import {ISystem} from "../../../src/modules/gameEngine/ecs/systems/System";
+import {System} from "../../../src/modules/gameEngine/ecs/systems/System";
 import {TypedEventEmitter} from "../../../src/modules/gameEngine/ecs/systems/TypedEventEmitter";
 import {ECManager} from "../../../src/modules/gameEngine/ecs/ECManager";
 import {Component} from "../../../src/modules/gameEngine/ecs/components/Component";
 
-class ComponentA extends Component {
-}
+class ComponentA extends Component {}
 
-class MockSystem implements ISystem {
+class MockSystem extends System {
     requiredComponents = [ComponentA];
     lastDeltaTime: number | null = null;
 
@@ -122,6 +120,10 @@ describe('GameEngine', () => {
             // Register a mock system to track deltaTime updates
             const mockSystem = new MockSystem();
             gameEngine.systemManager.registerSystem(mockSystem);
+
+            // Link ComponentA ( mock system dependency ) to an entity and start the engine
+            const entity = gameEngine.ecManager.createEntity();
+            gameEngine.ecManager.addComponent(entity, ComponentA, new ComponentA());
 
             gameEngine.start();
 

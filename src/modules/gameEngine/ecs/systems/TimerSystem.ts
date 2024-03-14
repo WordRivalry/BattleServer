@@ -1,10 +1,11 @@
 // TimerSystem.ts
-import {ISystem} from "./System";
+import {System} from "./System";
 import {TimerComponent} from "../components/TimerComponent";
 import {createScopedLogger} from "../../../logger/logger";
 import {ECManager} from "../ECManager";
 
-export class TimerSystem implements ISystem {
+export class TimerSystem extends System {
+
     requiredComponents = [TimerComponent];
     private logger = createScopedLogger('TimerSystem');
 

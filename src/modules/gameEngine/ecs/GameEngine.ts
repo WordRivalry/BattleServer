@@ -46,8 +46,6 @@ export class GameEngine {
             if (!this.running) return;
             const deltaTime = this.engineClock.update();
             this.systemManager.update(deltaTime);
-            // Process any commands that were queued during the update
-            this.ecManager.processCommands();
 
             // Aim to maintain a steady tick rate, adjusting for the actual time taken by the update
             const actualTimeTaken = performance.now() - this.engineClock.getLastUpdateTime()

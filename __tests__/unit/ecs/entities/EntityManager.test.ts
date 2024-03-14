@@ -104,7 +104,7 @@ describe('EntityManager and ComponentManager Integration', () => {
         entityManager.removeTag(entity, 1);
         const duration = performance.now() - start;
 
-        console.log(`Tag operations took ${duration} ms`);
+        //console.log(`Tag operations took ${duration} ms`);
         // Depending on your performance requirements, assert duration is below a threshold
         // expect(duration).toBeLessThan(expectedMaxDuration);
     });

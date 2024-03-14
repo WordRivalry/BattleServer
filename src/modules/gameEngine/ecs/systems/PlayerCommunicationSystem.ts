@@ -1,4 +1,4 @@
-import {ISystem} from "./System";
+import {System} from "./System";
 import {ComponentType} from "../components/ComponentManager";
 import {TypedEventEmitter} from "./TypedEventEmitter";
 import {EngineClock} from "../EngineClock";
@@ -8,6 +8,7 @@ import {PlayerConnectionComponent} from "../components/player/PlayerConnectionCo
 import {createScopedLogger} from "../../../logger/logger";
 import {ECManager} from "../ECManager";
 import {PlayerIdentityComponent} from "../components/player/PlayerIdentityComponent";
+import {GameIdentityComponent} from "../../game/components/game/GameIdentityComponent";
 
 export interface PlayerCommunication {
     type: string;
@@ -20,12 +21,13 @@ export enum PlayerCommunicationEventType {
     sendMessageToPlayer = "sendMessageToPlayer"
 }
 
-export class PlayerCommunicationSystem implements ISystem {
+export class PlayerCommunicationSystem extends System {
 
     private engineClock: EngineClock;
     private logger = createScopedLogger('PlayerCommunicationSystem');
 
     constructor(engineClock: EngineClock) {
+        super();
         this.engineClock = engineClock;
     }
 
@@ -57,7 +59,7 @@ export class PlayerCommunicationSystem implements ISystem {
                 playerConnection.socket.send(JSON.stringify(message));
                 this.logger.context("eventSystem").debug(`Sent message to player ${data.playerUUID}`);
             } else {
-                const playerMessageComponent = componentManager.getComponent(playerEntity, PlayerMessageComponent);
+                const playerMessageComponent = ecsManager.getComponent(playerEntity, PlayerMessageComponent);
                 playerMessageComponent.messages.push(message);
                 this.logger.context("eventSystem").debug(`Player ${data.playerUUID} is not connected. Storing message for later`);
             }
@@ -67,14 +69,14 @@ export class PlayerCommunicationSystem implements ISystem {
     private getGameEntity(ecManager: ECManager, gameSessionUUID: string) {
         const gameEntity = ecManager
             .queryEntities()
-            .withComponentCondition(GameStateComponent, (component: GameStateComponent) => component.uuid === gameSessionUUID)
+            .withComponentCondition(GameIdentityComponent, (component: GameIdentityComponent) => component.uuid === gameSessionUUID)
             .execute()[0];
         if (gameEntity === undefined) throw new Error("Game entity not found");
         return gameEntity;
     }
 
     requiredComponents: ComponentType[] = [];
-    update(deltaTime: number, entities: Entity[], ecsManager: ECManager, eventSystem: TypedEventEmitter): void {
+    update(deltaTime: number, entities: number[], ecsManager: ECManager, eventSystem: TypedEventEmitter): void {
         throw new Error("Method not implemented.");
     }
 }

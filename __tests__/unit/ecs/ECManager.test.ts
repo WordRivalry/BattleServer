@@ -34,14 +34,14 @@ describe('ECManager', () => {
         test('Destroying an entity removes it from the manager', () => {
             const entityId = ecManager.createEntity();
             ecManager.destroyEntity(entityId);
-            ecManager.processCommands()
+  
             expect(ecManager.getAllEntities()).not.toContain(entityId);
         });
 
         test('Getting all entities returns a correct list of active entity IDs', () => {
             const entities = [ecManager.createEntity(), ecManager.createEntity(), ecManager.createEntity()];
             ecManager.destroyEntity(entities[1]);
-            ecManager.processCommands();
+
             const allEntities = ecManager.getAllEntities();
             expect(allEntities.length).toBe(2);
             expect(allEntities).toContain(entities[0]);
@@ -166,74 +166,6 @@ describe('ECManager', () => {
 
             const children = ecManager.getChildren(parent);
             expect(children).not.toContain(child);
-        });
-    });
-
-    describe('Archetype Management', () => {
-        test('Entities with identical component sets are grouped under the same archetype', () => {
-            const entityId1 = ecManager.createEntity();
-            const entityId2 = ecManager.createEntity();
-            ecManager.addComponent(entityId1, ComponentA, new ComponentA());
-            ecManager.addComponent(entityId2, ComponentA, new ComponentA());
-            // Assuming getArchetypeKey and archetypes are accessible for testing
-            const archetypeKey = ecManager['getArchetypeKey']([ComponentA]);
-            expect(ecManager['archetypes'].get(archetypeKey)?.size).toBe(2);
-            expect(ecManager['archetypes'].get(archetypeKey)).toContain(entityId1);
-            expect(ecManager['archetypes'].get(archetypeKey)).toContain(entityId2);
-        });
-
-        test('Adding/removing components updates an entity\'s archetype correctly.', () => {
-            const entityId = ecManager.createEntity();
-            ecManager.addComponent(entityId, ComponentA, new ComponentA());
-            let archetypeKey = ecManager['getArchetypeKey']([ComponentA]);
-            expect(ecManager['archetypes'].get(archetypeKey)).toContain(entityId);
-
-            ecManager.removeComponent(entityId, ComponentA);
-            archetypeKey = ecManager['getArchetypeKey']([]);
-            expect(ecManager['archetypes'].get(archetypeKey)).toContain(entityId);
-        });
-
-        test('Archetype exists but is removed after removing its only entity', () => {
-            const entityId = ecManager.createEntity();
-            ecManager.addComponent(entityId, ComponentA, new ComponentA());
-            const archetypeKeyBeforeDestruction = ecManager['getArchetypeKey']([ComponentA]);
-            expect(ecManager['archetypes'].get(archetypeKeyBeforeDestruction)?.size).toBe(1);
-
-            ecManager.destroyEntity(entityId);
-            const archetype = ecManager['archetypes'].get(archetypeKeyBeforeDestruction);
-            expect(archetype).toBeDefined();
-
-            // Process commands to remove the entity
-            ecManager.processCommands();
-            expect(archetype?.size).toBe(0);
-        });
-
-        test('Archetype is removed from the map after the last entity is destroyed', () => {
-            const entityId = ecManager.createEntity();
-            ecManager.addComponent(entityId, ComponentA, new ComponentA());
-            ecManager.destroyEntity(entityId);
-            ecManager.processCommands();
-
-            const archetypeKey = ecManager['getArchetypeKey']([ComponentA]);
-            expect(ecManager['archetypes'].has(archetypeKey)).toBe(false);
-        });
-    });
-
-    describe('Command Buffer', () => {
-        test('Destroy entity command is buffered and processed correctly', () => {
-            const entityId = ecManager.createEntity();
-            ecManager.destroyEntity(entityId); // This should buffer the command
-            expect(ecManager.getAllEntities()).toContain(entityId); // Entity should still exist before processing
-            ecManager.processCommands(); // Process buffered commands
-            expect(ecManager.getAllEntities()).not.toContain(entityId); // Entity should no longer exist
-        });
-
-        test('Processing commands executes all buffered commands accurately.', () => {
-            const entityId = ecManager.createEntity();
-            ecManager['enqueueCommand']({ type: 'DestroyEntity', entityId });
-
-            ecManager.processCommands();
-            expect(ecManager.getAllEntities()).not.toContain(entityId);
         });
     });
 

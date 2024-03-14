@@ -1,5 +1,5 @@
 // GridPoolSystem.ts
-import {ISystem} from "../../ecs/systems/System";
+import {System} from "../../ecs/systems/System";
 import {GridPoolComponent} from "../components/game/GridPoolComponent";
 import {TypedEventEmitter} from "../../ecs/systems/TypedEventEmitter";
 import {GridComponent} from "../components/game/GridComponent";
@@ -11,7 +11,7 @@ import {ECManager} from "../../ecs/ECManager";
 import config from "../../../../../config";
 import axios from "axios";
 
-export class GridPoolSystem implements ISystem {
+export class GridPoolSystem extends System {
     requiredComponents = [GridPoolComponent];
     private logger = createScopedLogger('GridPoolSystem');
 

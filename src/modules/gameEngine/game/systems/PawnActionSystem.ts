@@ -1,10 +1,10 @@
-import {ISystem} from "../../ecs/systems/System";
+import {System} from "../../ecs/systems/System";
 import {ECManager} from "../../ecs/ECManager";
 import {TypedEventEmitter} from "../../ecs/systems/TypedEventEmitter";
 import {ComponentType} from "../../ecs/components/ComponentManager";
 
-export class PawnActionSystem implements ISystem {
-    requiredComponents: ComponentType[];
+export class PawnActionSystem extends System {
+    requiredComponents: ComponentType[] = [];
 
     init(ecsManager: ECManager, eventSystem: TypedEventEmitter): void {
     }

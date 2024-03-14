@@ -17,6 +17,13 @@ import {CountdownState} from "./States/CountdownState";
 import {StateMachineSystem} from "../ecs/systems/StateMachineSystem";
 import {PlayerControllerSystem} from "../ecs/systems/player/PlayerControllerSystem";
 import {StateMachineComponent} from "../ecs/components/StateMachine/StateMachineComponent";
+import {PlayerCommunicationSystem} from "../ecs/systems/PlayerCommunicationSystem";
+import {InfoDispatchState} from "./States/InfoDispatchState";
+import {PerformingEndGameState} from "./States/PerformingEndGameState";
+import {PersistingGameState} from "./States/PersistingGameState";
+import {ReconnectionRequestSystem} from "./systems/network/ReconnectionRequestSystem";
+import {ConnectionRequestSystem} from "./systems/network/ConnectionRequestSystem";
+import {SendMissedMessagesSystem} from "./systems/network/SendMissedMessagesSystem";
 
 export interface PlayerMetadata {
     uuid: string;
@@ -35,7 +42,7 @@ export class Arena {
 
     constructor(eventSystem: TypedEventEmitter) {
         this.gameEngine = new GameEngine(eventSystem);
-        this.initializeGameSystems();
+        this.initializeUpdatePipeline();
 
         // Listen for gridPoolRefilled event to start the game
         this.gameEngine.eventSystem.subscribeGeneric('gridPoolRefilled', () => {
@@ -43,10 +50,18 @@ export class Arena {
         });
     }
 
-    private initializeGameSystems(): void {
-        this.gameEngine.systemManager.registerSystem(new StateMachineSystem())
-        this.gameEngine.systemManager.registerSystem(new PlayerControllerSystem())
-        this.gameEngine.systemManager.registerSystem(new GridPoolSystem());
+    private initializeUpdatePipeline(): void { // Main Pipeline
+        this.gameEngine.systemManager.registerSystem(
+            new PlayerCommunicationSystem(this.gameEngine.engineClock)
+        );                                                                              // Player comm.      <-
+        this.gameEngine.systemManager.registerSystem(new ConnectionRequestSystem());    // Connection        <-
+        this.gameEngine.systemManager.startSubPipeline();                               // Sub-pipeline
+        this.gameEngine.systemManager.registerSystem(new ReconnectionRequestSystem());  // -> Reconnection
+        this.gameEngine.systemManager.registerSystem(new SendMissedMessagesSystem());   // -> Missed messages
+        this.gameEngine.systemManager.endSubPipeline();                                 // End sub-pipeline
+        this.gameEngine.systemManager.registerSystem(new PlayerControllerSystem());     // Player input      <-
+        this.gameEngine.systemManager.registerSystem(new StateMachineSystem());         // State machine     <-
+        this.gameEngine.systemManager.registerSystem(new GridPoolSystem());             // Grid pool         <-
     }
 
     public stop(): void {
@@ -55,7 +70,7 @@ export class Arena {
 
     // API to create a new game
     public createMatch(playersMetadata: PlayerMetadata[], gameMode: GameMode, modeType: ModeType): string {
-        const gameEntity = this.createGameEntity(gameMode, modeType);
+        const gameEntity = this.createGameEntity();
         const playersEntity = this.createPlayerEntities(playersMetadata);
 
         // Link players to game
@@ -78,17 +93,20 @@ export class Arena {
         return gridComponent;
     }
 
-    private createGameEntity(gameMode: GameMode, modeType: ModeType) {
+    private createGameEntity() {
         const gameEntity = this.gameEngine.ecManager.createEntity();
 
         // State machine component
         const waitingState = new WaitingForPlayersState();
+        const infoDispatchState = new InfoDispatchState();
         const countdownState = new CountdownState();
         const inProgressState = new InProgressState();
+        const performEndGame = new PerformingEndGameState();
+        const persistingGame = new PersistingGameState();
         const finishedState = new FinishedState();
-
         const stateMachineComponent = new StateMachineComponent(waitingState);
-        stateMachineComponent.addTransition(waitingState, countdownState, (gameEntity: number) => {
+
+        stateMachineComponent.addTransition(waitingState, infoDispatchState, (gameEntity: number) => {
             return this.gameEngine.ecManager
                 .queryEntities()
                 .withParent(gameEntity)
@@ -97,13 +115,22 @@ export class Arena {
                 .map(playerEntity => this.gameEngine.ecManager.getComponent(playerEntity, PlayerConnectionComponent))
                 .every(playerConnectionComponent => playerConnectionComponent.socket !== undefined);
         });
-
+        stateMachineComponent.addTransition(infoDispatchState, countdownState, (gameEntity: number) => {
+            return this.gameEngine.ecManager.hasTag(gameEntity, 201);
+        });
         stateMachineComponent.addTransition(countdownState, inProgressState, (gameEntity: number) => {
             return this.gameEngine.ecManager.getComponent(gameEntity, TimerComponent)?.isActive === false;
         });
-        stateMachineComponent.addTransition(inProgressState, finishedState, (gameEntity: number) => {
+        stateMachineComponent.addTransition(inProgressState, performEndGame, (gameEntity: number) => {
             return this.gameEngine.ecManager.getComponent(gameEntity, TimerComponent)?.isActive === false;
         });
+        stateMachineComponent.addTransition(performEndGame, persistingGame, (gameEntity: number) => {
+            return this.gameEngine.ecManager.hasTag(gameEntity, 202);
+        });
+        stateMachineComponent.addTransition(persistingGame, finishedState, (gameEntity: number) => {
+            return this.gameEngine.ecManager.hasTag(gameEntity, 203);
+        });
+
         this.gameEngine.ecManager.addComponent(gameEntity, StateMachineComponent, stateMachineComponent);
 
         // Player Message component
