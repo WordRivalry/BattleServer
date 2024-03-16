@@ -1,6 +1,7 @@
-import { EntityManager } from "../../../../src/modules/gameEngine/ecs/entities/EntityManager";
+// EntityManager.test.ts
+import { EntityManager } from "../../../../src/modules/ecs/entities/EntityManager";
 
-describe('EntityManager and ComponentManager Integration', () => {
+describe('EntityManager', () => {
     let entityManager: EntityManager;
 
     beforeEach(() => {

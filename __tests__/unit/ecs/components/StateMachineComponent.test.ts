@@ -1,8 +1,8 @@
 // StateMachineComponent.test.ts
-import {IState} from "../../../../src/modules/gameEngine/ecs/components/StateMachine/IState";
+import {IState} from "../../../../src/modules/ecs/components/StateMachine/IState";
 import {
     StateMachineComponent
-} from "../../../../src/modules/gameEngine/ecs/components/StateMachine/StateMachineComponent";
+} from "../../../../src/modules/ecs/components/StateMachine/StateMachineComponent";
 
 class MockState implements IState {
     enter = jest.fn();

@@ -1,9 +1,10 @@
-import {IState} from "../../../../src/modules/gameEngine/ecs/components/StateMachine/IState";
+// GameStateComponent.test.ts
+import {IState} from "../../../../src/modules/ecs/components/StateMachine/IState";
 
 import {
     StateMachineComponent,
     StateTransitionCondition
-} from "../../../../src/modules/gameEngine/ecs/components/StateMachine/StateMachineComponent";
+} from "../../../../src/modules/ecs/components/StateMachine/StateMachineComponent";
 
 
 describe('GameStateComponent', () => {

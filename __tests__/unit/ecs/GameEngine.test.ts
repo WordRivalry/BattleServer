@@ -1,8 +1,9 @@
-import {GameEngine} from "../../../src/modules/gameEngine/ecs/GameEngine";
-import {System} from "../../../src/modules/gameEngine/ecs/systems/System";
-import {TypedEventEmitter} from "../../../src/modules/gameEngine/ecs/systems/TypedEventEmitter";
-import {ECManager} from "../../../src/modules/gameEngine/ecs/ECManager";
-import {Component} from "../../../src/modules/gameEngine/ecs/components/Component";
+// GameEngine.test.ts
+import {GameEngine} from "../../../src/modules/ecs/GameEngine";
+import {System} from "../../../src/modules/ecs/systems/System";
+import {TypedEventEmitter} from "../../../src/modules/ecs/TypedEventEmitter";
+import {ECManager} from "../../../src/modules/ecs/ECManager";
+import {Component} from "../../../src/modules/ecs/components/Component";
 
 class ComponentA extends Component {}
 

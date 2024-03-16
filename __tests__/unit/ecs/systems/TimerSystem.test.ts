@@ -1,10 +1,11 @@
-import {TimerSystem} from "../../../../src/modules/gameEngine/ecs/systems/TimerSystem";
-import {ComponentManager} from "../../../../src/modules/gameEngine/ecs/components/ComponentManager";
-import {TimerComponent} from "../../../../src/modules/gameEngine/ecs/components/TimerComponent";
-import {ECManager} from "../../../../src/modules/gameEngine/ecs/ECManager";
-import {EntityManager} from "../../../../src/modules/gameEngine/ecs/entities/EntityManager";
+// TimerSystem.test.ts
+import {TimerSystem} from "../../../../src/modules/ecs/systems/timer/TimerSystem";
+import {ComponentManager} from "../../../../src/modules/ecs/components/ComponentManager";
+import {TimerComponent} from "../../../../src/modules/ecs/components/TimerComponent";
+import {ECManager} from "../../../../src/modules/ecs/ECManager";
+import {EntityManager} from "../../../../src/modules/ecs/entities/EntityManager";
 
-jest.mock('../../../../src/modules/gameEngine/ecs/components/ComponentManager');
+jest.mock('../../../../src/modules/ecs/components/ComponentManager');
 
 describe('TimerSystem', () => {
     let system: TimerSystem;

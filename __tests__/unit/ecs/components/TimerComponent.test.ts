@@ -1,4 +1,5 @@
-import {TimerComponent} from "../../../../src/modules/gameEngine/ecs/components/TimerComponent";
+// TimerComponent.test.ts
+import {TimerComponent} from "../../../../src/modules/ecs/components/TimerComponent";
 
 describe('TimerComponent', () => {
 

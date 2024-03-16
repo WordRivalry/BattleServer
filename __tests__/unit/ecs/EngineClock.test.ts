@@ -1,4 +1,5 @@
-import {EngineClock} from "../../../src/modules/gameEngine/ecs/EngineClock";
+// EngineClock.test.ts
+import {EngineClock} from "../../../src/modules/ecs/EngineClock";
 
 describe('EngineClock', () => {
     let engineClock: EngineClock;

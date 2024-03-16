@@ -1,12 +1,11 @@
 // SystemManager.test.ts
-
-import {System} from "../../../../src/modules/gameEngine/ecs/systems/System";
-import {EntityManager} from "../../../../src/modules/gameEngine/ecs/entities/EntityManager";
-import {ComponentManager, ComponentType} from "../../../../src/modules/gameEngine/ecs/components/ComponentManager";
-import {TypedEventEmitter} from "../../../../src/modules/gameEngine/ecs/systems/TypedEventEmitter";
-import {SystemManager} from "../../../../src/modules/gameEngine/ecs/systems/SystemManager";
-import {ECManager} from "../../../../src/modules/gameEngine/ecs/ECManager";
-import {Component} from "../../../../src/modules/gameEngine/ecs/components/Component";
+import {System} from "../../../../src/modules/ecs/systems/System";
+import {EntityManager} from "../../../../src/modules/ecs/entities/EntityManager";
+import {ComponentManager, ComponentType} from "../../../../src/modules/ecs/components/ComponentManager";
+import {TypedEventEmitter} from "../../../../src/modules/ecs/TypedEventEmitter";
+import {SystemManager} from "../../../../src/modules/ecs/systems/SystemManager";
+import {ECManager} from "../../../../src/modules/ecs/ECManager";
+import {Component} from "../../../../src/modules/ecs/components/Component";
 
 abstract class  SystemMock implements System {
     initCalled = false;

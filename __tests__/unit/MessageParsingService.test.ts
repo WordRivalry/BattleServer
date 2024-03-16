@@ -1,4 +1,4 @@
-// __tests__/unit/MessageParsingService.test.ts
+// MessageParsingService.test.ts
 import { MessageParsingService } from '../../src/modules/server_networking/MessageParsingService';
 import {
     InvalidActionFormatError,

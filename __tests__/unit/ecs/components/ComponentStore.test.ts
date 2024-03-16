@@ -1,7 +1,7 @@
-import {ComponentStore} from '../../../../src/modules/gameEngine/ecs/components/ComponentStore';
+// ComponentStore.test.ts
+import {ComponentStore} from '../../../../src/modules/ecs/components/ComponentStore';
 import {performance} from 'perf_hooks';
 
-// Mock component for testing
 class TestComponent {
     constructor(public value: number) {}
 }

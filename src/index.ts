@@ -3,8 +3,8 @@ import { ConnectionManager } from './modules/server_networking/ConnectionManager
 import { WebSocketMessageHandler as WebSocketMessageHandler } from './modules/server_networking/WebSocketMessageHandler';
 
 import { HttpRequestHandler } from "./modules/server_networking/HttpRequestHandler";
-import { Arena } from "./modules/gameEngine/game/Arena";
-import { TypedEventEmitter } from "./modules/gameEngine/ecs/systems/TypedEventEmitter";
+import { Arena } from "./modules/game/Arena";
+import { TypedEventEmitter } from "./modules/ecs/TypedEventEmitter";
 
 // Instantiate the TypedEventEmitter
 const eventEmitter = new TypedEventEmitter();

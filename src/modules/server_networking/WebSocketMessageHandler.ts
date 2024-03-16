@@ -4,10 +4,10 @@ import { IMessageHandler } from './WebSocketManager';
 import { UnknownPlayerError, UnknownGameSessionError, ValidationFailedError } from "../error/Error";
 import { MessageParsingService } from "./MessageParsingService";
 import { ActionType, PlayerAction } from "./validation/messageType";
-import { TypedEventEmitter } from "../gameEngine/ecs/systems/TypedEventEmitter";
-import {GameEvent} from "../gameEngine/ecs/systems/NetworkSystem";
-import {GlobalInputEventQueue} from "../gameEngine/ecs/components/inputs/GlobalInputEventQueue";
-import {InputEvent} from "../gameEngine/ecs/components/inputs/InputEvent";
+import { TypedEventEmitter } from "../ecs/TypedEventEmitter";
+import {GameEvent} from "../ecs/systems/network/NetworkSystem";
+import {GlobalInputEventQueue} from "../ecs/components/inputs/GlobalInputEventQueue";
+import {InputEvent} from "../ecs/components/inputs/InputEvent";
 
 export interface ConnectionPayload {
     gameSessionUUID: string,

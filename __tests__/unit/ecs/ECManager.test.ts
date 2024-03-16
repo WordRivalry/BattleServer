@@ -1,7 +1,8 @@
-import {EntityManager} from "../../../src/modules/gameEngine/ecs/entities/EntityManager";
-import {ComponentManager} from "../../../src/modules/gameEngine/ecs/components/ComponentManager";
-import {ECManager} from "../../../src/modules/gameEngine/ecs/ECManager";
-import {Component} from "../../../src/modules/gameEngine/ecs/components/Component";
+// ECManager.test.ts
+import {EntityManager} from "../../../src/modules/ecs/entities/EntityManager";
+import {ComponentManager} from "../../../src/modules/ecs/components/ComponentManager";
+import {ECManager} from "../../../src/modules/ecs/ECManager";
+import {Component} from "../../../src/modules/ecs/components/Component";
 
 class ComponentA extends Component {
     constructor(public value = 0) {super();}
@@ -11,9 +12,7 @@ class  ComponentB extends Component {
     constructor(public flag = false) {super();}
 }
 
-class ComponentC extends Component {
-    // ...
-}
+class ComponentC extends Component {}
 
 describe('ECManager', () => {
     let ecManager: ECManager;

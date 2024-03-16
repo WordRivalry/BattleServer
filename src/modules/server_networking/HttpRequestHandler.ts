@@ -1,6 +1,6 @@
 
 import { PlayerMetadata } from '../GameSession/GameSessionManager';
-import { Arena } from "../gameEngine/game/Arena";
+import { Arena } from "../game/Arena";
 import { GameMode, ModeType } from "./validation/messageType";
 
 export class HttpRequestHandler {

@@ -1,10 +1,11 @@
-import {System} from "../../../../src/modules/gameEngine/ecs/systems/System";
-import {ECManager} from "../../../../src/modules/gameEngine/ecs/ECManager";
-import {TypedEventEmitter} from "../../../../src/modules/gameEngine/ecs/systems/TypedEventEmitter";
-import {Component} from "../../../../src/modules/gameEngine/ecs/components/Component";
-import {EntityManager} from "../../../../src/modules/gameEngine/ecs/entities/EntityManager";
-import {ComponentManager, ComponentType} from "../../../../src/modules/gameEngine/ecs/components/ComponentManager";
-import {PipelineManager} from "../../../../src/modules/gameEngine/ecs/systems/PipelineManager";
+// PipelineManager.test.ts
+import {System} from "../../../../src/modules/ecs/systems/System";
+import {ECManager} from "../../../../src/modules/ecs/ECManager";
+import {TypedEventEmitter} from "../../../../src/modules/ecs/TypedEventEmitter";
+import {Component} from "../../../../src/modules/ecs/components/Component";
+import {EntityManager} from "../../../../src/modules/ecs/entities/EntityManager";
+import {ComponentManager, ComponentType} from "../../../../src/modules/ecs/components/ComponentManager";
+import {PipelineManager} from "../../../../src/modules/ecs/systems/PipelineManager";
 
 abstract class  SystemMock implements System {
     initCalled = false;
@@ -30,7 +31,7 @@ class SystemC extends SystemMock {requiredComponents = [ComponentC];}
 class SystemD extends SystemMock {requiredComponents = [ComponentD];}
 class SystemE extends SystemMock {requiredComponents = [ComponentE];}
 
-describe('SystemPipelineManager', () => {
+describe('PipelineManager', () => {
     let pipelineManager: PipelineManager;
     let ecManager: ECManager;
     let eventSystem: TypedEventEmitter;

@@ -1,4 +1,5 @@
-import {TypedEventEmitter} from "../../../src/modules/gameEngine/ecs/systems/TypedEventEmitter";
+// TypedEvenEmitter.test.ts
+import {TypedEventEmitter} from "../../../src/modules/ecs/TypedEventEmitter";
 
 describe('TypedEvenEmitter', () => {
     let eventEmitter: TypedEventEmitter;

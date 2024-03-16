@@ -1,6 +1,6 @@
-// __tests__/unit/ComponentManager.test.ts
-import {ComponentManager} from '../../../../src/modules/gameEngine/ecs/components/ComponentManager';
-import {Component} from '../../../../src/modules/gameEngine/ecs/components/Component';
+// ComponentManager.test.ts
+import {ComponentManager} from '../../../../src/modules/ecs/components/ComponentManager';
+import {Component} from '../../../../src/modules/ecs/components/Component';
 
 // Test component extending the base Component class
 class TestComponent extends Component {

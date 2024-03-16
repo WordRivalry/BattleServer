@@ -1,13 +1,13 @@
 // StateMachineSystem.test.ts
-import {IState} from "../../../../src/modules/gameEngine/ecs/components/StateMachine/IState";
+import {IState} from "../../../../src/modules/ecs/components/StateMachine/IState";
 import {
     StateMachineComponent
-} from "../../../../src/modules/gameEngine/ecs/components/StateMachine/StateMachineComponent";
-import {ECManager} from "../../../../src/modules/gameEngine/ecs/ECManager";
-import {EntityManager} from "../../../../src/modules/gameEngine/ecs/entities/EntityManager";
-import {ComponentManager} from "../../../../src/modules/gameEngine/ecs/components/ComponentManager";
-import {StateMachineSystem} from "../../../../src/modules/gameEngine/ecs/systems/StateMachineSystem";
-import {TypedEventEmitter} from "../../../../src/modules/gameEngine/ecs/systems/TypedEventEmitter";
+} from "../../../../src/modules/ecs/components/StateMachine/StateMachineComponent";
+import {ECManager} from "../../../../src/modules/ecs/ECManager";
+import {EntityManager} from "../../../../src/modules/ecs/entities/EntityManager";
+import {ComponentManager} from "../../../../src/modules/ecs/components/ComponentManager";
+import {StateMachineSystem} from "../../../../src/modules/ecs/systems/fsm/StateMachineSystem";
+import {TypedEventEmitter} from "../../../../src/modules/ecs/TypedEventEmitter";
 
 class MockState implements IState {
     public name: string;
