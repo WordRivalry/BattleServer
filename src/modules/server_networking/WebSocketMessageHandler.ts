@@ -1,13 +1,11 @@
 // WebSocketMessageHandler.ts
-import { WebSocket, RawData } from 'ws';
-import { IMessageHandler } from './WebSocketManager';
-import { UnknownPlayerError, UnknownGameSessionError, ValidationFailedError } from "../error/Error";
-import { MessageParsingService } from "./MessageParsingService";
-import { ActionType, PlayerAction } from "./validation/messageType";
-import { TypedEventEmitter } from "../ecs/TypedEventEmitter";
+import {WebSocket, RawData} from 'ws';
+import {IMessageHandler} from './WebSocketManager';
+import {UnknownPlayerError, UnknownGameSessionError, ValidationFailedError} from "../error/Error";
+import {MessageParsingService} from "./MessageParsingService";
+import {ActionType, PlayerAction} from "./validation/messageType";
+import {TypedEventEmitter} from "../ecs/TypedEventEmitter";
 import {GameEvent} from "../ecs/systems/network/NetworkSystem";
-import {GlobalInputEventQueue} from "../ecs/components/inputs/GlobalInputEventQueue";
-import {InputEvent} from "../ecs/components/inputs/InputEvent";
 
 export interface ConnectionPayload {
     gameSessionUUID: string,
@@ -28,14 +26,15 @@ export interface PlayerDisconnectionPayload {
 
 export class WebSocketMessageHandler implements IMessageHandler {
 
-    constructor(private eventSystem: TypedEventEmitter) {}
+    constructor(private eventSystem: TypedEventEmitter) {
+    }
 
     public handleConnection(ws: WebSocket, playerUUID: string, gameSessionUUID: string): void {
-         this.eventSystem.emitGeneric<ConnectionPayload>(GameEvent.PLAYER_CONNECTS, {
+        this.eventSystem.emitTargeted<ConnectionPayload>(GameEvent.PLAYER_CONNECTS, gameSessionUUID,{
             gameSessionUUID: gameSessionUUID,
             playerUUID: playerUUID,
             socket: ws
-         });
+        });
     }
 
     public handleMessage(message: RawData, playerUUID: string, gameSessionUUID: string): void {

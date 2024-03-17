@@ -8,12 +8,12 @@ import {PlayerConnectionComponent} from "../../components/player/PlayerConnectio
 import {createScopedLogger} from "../../../logger/logger";
 import {ECManager} from "../../ECManager";
 import {PlayerIdentityComponent} from "../../components/player/PlayerIdentityComponent";
-import {GameIdentityComponent} from "../../../game/components/game/GameIdentityComponent";
+import {WebSocket} from "ws";
 
 export interface PlayerCommunication {
+    socket?: WebSocket;
+    playerEntity: string;
     type: string;
-    gameSessionUUID: string;
-    playerUUID: string;
     payload: any;
 }
 
@@ -34,45 +34,25 @@ export class PlayerCommunicationSystem extends System {
     init(ecsManager: ECManager, eventSystem: TypedEventEmitter): void {
         eventSystem.subscribeGeneric('sendMessageToPlayer', (data: PlayerCommunication) => {
             // Get the player connection details
-            const gameEntity = this.getGameEntity(ecsManager, data.gameSessionUUID);
-            const playerEntity = ecsManager
-                .queryEntities()
-                .withParent(gameEntity)
-                .withComponentCondition(PlayerIdentityComponent, (component: PlayerIdentityComponent) => component.playerUUID === data.playerUUID)
-                .execute()[0];
-            if (playerEntity === undefined) throw new Error("Player entity not found");
-            const playerConnection = ecsManager.getComponent(playerEntity, PlayerConnectionComponent);
-            if (!playerConnection.socket) throw new Error("Player connection not found");
 
             // Form the message
             const message: PlayerMessage = {
-                id: uuidv4(),
+                uuid: uuidv4(),
                 type: data.type,
                 payload: data.payload,
-                timestamp: this.engineClock.getCurrentTime(),
-                gameSessionUUID: data.gameSessionUUID,
-                recipient: data.playerUUID
+                timestamp: this.engineClock.getCurrentTime()
             };
 
             // Send the message to a player
-            if (playerConnection.socket) {
-                playerConnection.socket.send(JSON.stringify(message));
-                this.logger.context("eventSystem").debug(`Sent message to player ${data.playerUUID}`);
+            if (data.socket) {
+                data.socket.send(JSON.stringify(message));
+                this.logger.context("eventSystem").debug(`Sent message to player  ${playerEntity}`);
             } else {
                 const playerMessageComponent = ecsManager.getComponent(playerEntity, PlayerMessageComponent);
                 playerMessageComponent.messages.push(message);
-                this.logger.context("eventSystem").debug(`Player ${data.playerUUID} is not connected. Storing message for later`);
+               this.logger.context("eventSystem").debug(`Player ${playerEntity} is not connected. Storing message for later`);
             }
         });
-    }
-
-    private getGameEntity(ecManager: ECManager, gameSessionUUID: string) {
-        const gameEntity = ecManager
-            .queryEntities()
-            .withComponentCondition(GameIdentityComponent, (component: GameIdentityComponent) => component.uuid === gameSessionUUID)
-            .execute()[0];
-        if (gameEntity === undefined) throw new Error("Game entity not found");
-        return gameEntity;
     }
 
     requiredComponents: ComponentType[] = [];

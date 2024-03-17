@@ -6,6 +6,7 @@ import {TypedEventEmitter} from "./TypedEventEmitter";
 import {EngineClock} from "./EngineClock";
 import {createScopedLogger} from "../logger/logger";
 import {ECManager} from "./ECManager";
+import {GlobalComponent} from "./components/GlobalComponent";
 
 export class GameEngine {
     public readonly systemManager: SystemManager;
@@ -20,6 +21,8 @@ export class GameEngine {
         this.engineClock = new EngineClock();
         this.eventSystem = eventEmitter;
         this.systemManager = new SystemManager(this.ecManager, this.eventSystem);
+        const globalEntity = this.ecManager.createEntity();
+        this.ecManager.addComponent(globalEntity, GlobalComponent, new GlobalComponent());
     }
 
     public start(): void {

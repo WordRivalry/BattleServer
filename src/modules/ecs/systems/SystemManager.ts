@@ -16,7 +16,7 @@ export class SystemManager {
         this.pipelineManager = new PipelineManager();
     }
 
-    registerOutOfPipeSystem(system: System) {
+    registerSystemOutOfPipe(system: System) {
         this.noDependencySystems.push(system);
     }
 

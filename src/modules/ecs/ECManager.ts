@@ -14,8 +14,7 @@ export class ECManager {
     // Expose functionalities from EntityManager
 
     createEntity(): number {
-        const entityId = this.entityManager.createEntity();
-        return entityId;
+        return this.entityManager.createEntity();
     }
 
     addTag(entityId: number, tag: number): void {
@@ -108,6 +107,7 @@ export class EntityQueryBuilder {
     private parent: number | null = null;
     private includeChildren: number[] = [];
     private excludeChildren: number[] = [];
+    private limit: number | null = null;
 
     constructor(ecsManager: ECManager) {
         this.ecsManager = ecsManager;
@@ -183,6 +183,15 @@ export class EntityQueryBuilder {
         return this;
     }
 
+    getOne(): number {
+        const result = this.execute();
+        // Check if there is exactly one result
+        if (result.length !== 1) {
+            throw new Error(`Expected exactly one entity, but found ${result.length}`);
+        }
+        return result[0];
+    }
+
     execute(): number[] {
         // Start with all entities or a subset if a parent is specified
         let resultEntities = this.parent !== null
@@ -235,6 +244,11 @@ export class EntityQueryBuilder {
 
             return includesAllComponents && excludesAllComponents && meetsAllConditions;
         });
+
+        // Limit the number of results
+        if (this.limit !== null) {
+            resultEntities = resultEntities.slice(0, this.limit);
+        }
 
         return resultEntities;
     }

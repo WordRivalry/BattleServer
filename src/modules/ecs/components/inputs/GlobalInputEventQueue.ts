@@ -1,16 +1,16 @@
 // GlobalInputEventQueue.ta
-import { InputEvent } from './InputEvent';
+import { Input } from './Input';
 
 export class GlobalInputEventQueue {
-    private static queue: InputEvent[] = [];
+    private static queue: Input[] = [];
 
-    static enqueue(inputEvent: InputEvent) {
+    static enqueue(inputEvent: Input) {
         this.queue.push(inputEvent);
     }
 
-    static fetchAndClearInputsForEntity(entityId: number): InputEvent[] {
-        const entityInputs = this.queue.filter(input => input.entityId === entityId);
-        this.queue = this.queue.filter(input => input.entityId !== entityId);
+    static fetchAndClearInputsForEntity(playerUUID: string): Input[] {
+        const entityInputs = this.queue.filter(input => input.playerUUID === playerUUID);
+        this.queue = this.queue.filter(input => input.playerUUID !== playerUUID);
         return entityInputs;
     }
 

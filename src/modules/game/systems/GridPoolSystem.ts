@@ -18,7 +18,10 @@ export class GridPoolSystem extends System {
     public init(ecManager: ECManager, eventSystem: TypedEventEmitter): void {
 
         // Get the global entity
-        const globalEntity = ecManager.getEntitiesWithComponent(GlobalComponent)[0];
+        const globalEntity = ecManager
+            .queryEntities()
+            .withComponent(GlobalComponent)
+            .getOne();
 
         // Add Grid pool component to the global entity
         const gridPoolComponent = new GridPoolComponent();

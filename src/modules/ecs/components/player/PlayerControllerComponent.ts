@@ -1,12 +1,7 @@
 // PlayerControllerComponent.ts
 import {Component} from "../Component";
-import {ComponentType} from "../ComponentManager";
+import {CommandType} from "../../commands/Command";
 
-export class PlayerControllerComponent extends Component {
-    inputMappings: Map<string, ComponentType>;
-
-    constructor(inputMappings: Map<string, ComponentType>) {
-        super();
-        this.inputMappings = inputMappings;
-    }
+export class PlayerControllerComponent extends Component{
+    public inputToCommandMapping: Map<string, CommandType> = new Map();
 }

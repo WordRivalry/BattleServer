@@ -1,6 +1,5 @@
-
-import { PlayerMetadata } from '../GameSession/GameSessionManager';
-import { Arena } from "../game/Arena";
+// HttpRequestHandler.ts
+import {Arena, PlayerMetadata} from "../game/Arena";
 import { GameMode, ModeType } from "./validation/messageType";
 
 export class HttpRequestHandler {
