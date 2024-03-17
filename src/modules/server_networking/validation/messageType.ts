@@ -18,6 +18,7 @@ export enum ActionType {
     JOIN_GAME_SESSION = 'JOIN_GAME_SESSION',
     PLAYER_LEFT_SESSION = 'LEAVE_GAME_SESSION',
     PLAYER_ACTION = 'PLAYER_ACTION',
+    LEAVE_GAME_SESSION = 'LEAVE_GAME_SESSION',
 }
 
 export enum PlayerActionType {

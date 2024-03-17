@@ -1,14 +1,16 @@
 // WebSocketManager.ts
-import { WebSocket, RawData } from 'ws';
-import { WebSocketServer } from 'ws';
-import { createScopedLogger } from '../logger/logger';
-import { ErrorHandlingService } from "../error/Error";
+import {WebSocket, RawData} from 'ws';
+import {WebSocketServer} from 'ws';
+import {createScopedLogger} from '../logger/logger';
+import {ErrorHandlingService} from "../error/Error";
 import http from 'http';
 import config from "../../../config";
 
 export interface IMessageHandler {
-    handleMessage(message: RawData, playerUUID: string, gameSessionUUID: string): void;
+    handleMessage(ws: WebSocket, message: RawData, playerUUID: string, gameSessionUUID: string): void;
+
     handleConnection(ws: WebSocket, playerUUID: string, gameSessionUUID: string): void;
+
     handleDisconnect(playerUUID: string | undefined, gameSessionUUID: string | undefined): void;
 }
 
@@ -20,7 +22,7 @@ export class WebSocketManager {
         this.setupWebSocketServer();
     }
 
-    private setupUpgradeHandler( server: http.Server): void {
+    private setupUpgradeHandler(server: http.Server): void {
         server.on('upgrade', (request, socket, head) => {
             this.logger.context("setupUpgradeHandler").info('Upgrade request received');
 
@@ -41,7 +43,7 @@ export class WebSocketManager {
             }
 
             this.wss.handleUpgrade(request, socket, head, (ws: WebSocket): void => {
-                this.wss.emit('connection', ws, request );
+                this.wss.emit('connection', ws, request);
             });
         });
     }
@@ -69,7 +71,7 @@ export class WebSocketManager {
 
             ws.on('message', (message: RawData) => {
                 try {
-                    this.messageHandler.handleMessage(message, playerUUID, gameSessionUUID);
+                    this.messageHandler.handleMessage(ws, message, playerUUID, gameSessionUUID);
                 } catch (error) {
                     ErrorHandlingService.sendError(ws, error);
                 }

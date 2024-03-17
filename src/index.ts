@@ -5,18 +5,30 @@ import { WebSocketMessageHandler as WebSocketMessageHandler } from './modules/se
 import { HttpRequestHandler } from "./modules/server_networking/HttpRequestHandler";
 import { Arena } from "./modules/game/Arena";
 import { TypedEventEmitter } from "./modules/ecs/TypedEventEmitter";
+import {GameSessionManager} from "./modules/oldButNew/GameSessionManager";
+import {PlayerSessionValidationAndManagement} from "./modules/oldButNew/PlayerSessionValidationAndManagement";
 
-// Instantiate the TypedEventEmitter
-const eventEmitter = new TypedEventEmitter();
+
+const gameSessionManager = new GameSessionManager();
+const playerSessionValidationAndManagement = new PlayerSessionValidationAndManagement(gameSessionManager);
+//
+// // Instantiate the TypedEventEmitter
+// const eventEmitter = new TypedEventEmitter();
 
 // Instantiate the MasterGame
-const arena = new Arena(eventEmitter);
+// const arena = new Arena(eventEmitter);
 
 // Instantiate http Request Handler
-const requestHandler = new HttpRequestHandler(arena);
+const requestHandler = new HttpRequestHandler(gameSessionManager);
 
 // Instantiate WebSocket Message Handler
-const messageHandler = new WebSocketMessageHandler(eventEmitter);
+// const messageHandler = new WebSocketMessageHandler(eventEmitter);
+
+// Instantiate WebSocket Message Handler
+const messageHandler = new WebSocketMessageHandler(
+    gameSessionManager,
+    playerSessionValidationAndManagement
+);
 
 // Instantiate the ConnectionManager with the MatchmakingQueue and PlayerSessionStore
 const connectionManager: ConnectionManager = new ConnectionManager(requestHandler, messageHandler);
