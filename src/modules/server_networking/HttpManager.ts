@@ -1,8 +1,8 @@
 // APIManager.ts
 import express from "express";
 import cors from "cors";
-import { createScopedLogger } from "../logger/logger";
-import {PlayerMetadata} from "../game/Arena";
+import {createScopedLogger} from "../logger/logger";
+import {PlayerMetadata} from "../oldButNew/GameSessionManager";
 
 export interface IHttpRequestHandler {
     handleRequestAlloc(playersMetadata: PlayerMetadata[], gameMode: string, modeType: string): string;

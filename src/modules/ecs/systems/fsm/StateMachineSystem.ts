@@ -11,12 +11,13 @@ export class StateMachineSystem extends System {
             const stateMachineComponent = ecManager.getComponent(entity, StateMachineComponent);
 
             if (stateMachineComponent) {
-                const transitions = stateMachineComponent.getTransitions().get(stateMachineComponent.currentState);
+                const transitions = stateMachineComponent.getTransitions().get(stateMachineComponent.currentStateType);
                 if (transitions) {
-                    for (const {nextState, condition} of transitions) {
-                        if (condition(entity)) {
+                    for (const {nextState, nextStateType, condition} of transitions) {
+                        if (condition(entity, ecManager)) {
                             stateMachineComponent.currentState.exit(entity, ecManager, eventSystem);
                             stateMachineComponent.currentState = nextState;
+                            stateMachineComponent.currentStateType = nextStateType;
                             stateMachineComponent.currentState.enter(entity, ecManager, eventSystem);
                             break; // Break after the first successful transition
                         }

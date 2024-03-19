@@ -1,5 +1,5 @@
 // StateMachineComponent.test.ts
-import {IState} from "../../../../src/modules/ecs/components/StateMachine/IState";
+import {IState} from "../../../../src/modules/ecs/components/StateMachine/State";
 import {
     StateMachineComponent
 } from "../../../../src/modules/ecs/components/StateMachine/StateMachineComponent";

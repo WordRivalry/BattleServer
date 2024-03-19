@@ -9,7 +9,7 @@ import {createScopedLogger} from "../../logger/logger";
 import {GameIdentityComponent} from "../components/game/GameIdentityComponent";
 import {GridComponent} from "../components/game/GridComponent";
 import {ScoreComponent} from "../components/ScoreComponent";
-import {PlayerIdentityComponent} from "../../ecs/components/player/PlayerIdentityComponent";
+import {IdentityComponent} from "../../ecs/components/player/IdentityComponent";
 import {PlayerActionPayload} from "../../server_networking/WebSocketMessageHandler";
 import {PlayerConnectionComponent} from "../../ecs/components/player/PlayerConnectionComponent";
 import {PlayerCommunication} from "../../ecs/systems/network/PlayerCommunicationSystem";
@@ -28,8 +28,8 @@ export class ActionEventSystem extends System {
 
             const playerEntity = ecManager.queryEntities()
                 .withComponentCondition(
-                    PlayerIdentityComponent,
-                    (component) => component.playerUUID === payload.playerUUID
+                    IdentityComponent,
+                    (component) => component.playerUUID === payload.playerName
                 )
                 .getOne();
 
@@ -49,11 +49,11 @@ export class ActionEventSystem extends System {
             // Send score to the opponent player
             const opponentPlayerEntity = ecManager.queryEntities()
                 .withComponentCondition(
-                    PlayerIdentityComponent,
-                    (component) => component.playerUUID !== payload.playerUUID
+                    IdentityComponent,
+                    (component) => component.playerUUID !== payload.playerName
                 )
                 .getOne();
-            const opponentUUID = ecManager.getComponent(opponentPlayerEntity, PlayerIdentityComponent).playerUUID;
+            const opponentUUID = ecManager.getComponent(opponentPlayerEntity, IdentityComponent).playerUUID;
 
             const opponentConnection = ecManager.getComponent(opponentPlayerEntity, PlayerConnectionComponent);
             eventSystem.emitGeneric<PlayerCommunication>('sendMessageToPlayer', {

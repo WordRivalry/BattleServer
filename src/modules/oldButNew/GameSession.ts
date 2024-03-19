@@ -1,115 +1,52 @@
-
-import {WebSocket} from 'ws';
-import {EventEmitter} from 'events';
-import {createScopedLogger} from '../logger/logger';
+import {GameSessionNetworking, GameSessionNetworking_Delegate} from './GameSessionNetworking';
 import {PlayerMetadata} from './GameSessionManager';
-import {PlayerNotInSessionError} from "../error/Error";
-import {PlayerAction} from "../server_networking/validation/messageType";
-import {MessagingService} from "./MessageService";
-import {Player} from "../../types";
+import {PlayerAction} from '../server_networking/validation/messageType';
+import {TypedEventEmitter} from "../ecs/TypedEventEmitter";
 
-export abstract class GameSession extends EventEmitter {
-    protected players: Player[] = [];
-    protected isProgressing: boolean = false;
-    protected messagingService: MessagingService;
-    private logger = createScopedLogger('GameSession');
+export enum SessionState {
+    WAITING = "waiting",
+    IN_PROGRESS = "in_progress",
+    ENDED = "ended"
+}
 
-    abstract startGame(): void;
-    abstract handlePlayerLeaves(playerUUID: string): void;
-    abstract handlePlayerAction(playerUUID: string, action:  PlayerAction): void;
+export abstract class GameSession implements GameSessionNetworking_Delegate {
+
+    protected sessionNetworking: GameSessionNetworking;
+    private sessionState: SessionState = SessionState.WAITING;
+
+    //////////////////////////////////////////////////
+    //               Network Delegates              //
+    //////////////////////////////////////////////////
 
     protected constructor(
-        public uuid: string,
-        public playersMetadata: PlayerMetadata[],
-        public gameMode: string,
-        public modeType: string
-
+        public readonly gameSessionUUID: string,
+        public readonly playersMetadata: PlayerMetadata[],
+        public readonly gameMode: string,
+        public readonly modeType: string,
+        eventEmitter: TypedEventEmitter
     ) {
-        super();
-
-        // Initialize the messaging service for the game session
-        this.messagingService = new MessagingService(uuid);
-
-        // Initialize the awaited player
-        this.players = this.playersMetadata.map((metadata: PlayerMetadata) => {
-            return {
-                uuid: metadata.uuid,
-                username: metadata.username,
-                lastSeen: undefined,
-                isConnected: false
-            };
-        });
+        this.sessionNetworking = new GameSessionNetworking(gameSessionUUID, playersMetadata, eventEmitter);
+        this.sessionNetworking.setDelegate(this);
     }
 
-    public playerJoins(playerUUID: string, ws: WebSocket, isReconnecting: boolean = false): void {
-        const player: Player = this.getPlayer(playerUUID);
+    abstract onPlayerLeft(playerName: string): void;
 
-        // Register player to the messaging service
-        this.messagingService.registerPlayerSocket(playerUUID, ws);
+    abstract onAction(playerName: string, action: PlayerAction): void;
 
-        if (isReconnecting) {
-            //Fetch the last seen time
-            const lastSeen = player.lastSeen;
-            if (lastSeen === undefined) {
-                this.logger.context('playerJoins').error('LastSeen needed for reconnection...', { playerUUID });
-                return;
-            }
-            this.messagingService.sendMissedMessages(playerUUID, lastSeen);
-        }
+    abstract onAllPlayersJoined(): void;
 
-        // Update the player's connection status
-        player.isConnected = true;
-        player.lastSeen = Date.now();
+    abstract onAPlayerJoined(playerName: string): void;
 
-        // if all players have joined, start the game
-        if (!this.isProgressing && this.allPlayersJoined()) {
-            // Start the game
-            this.startGame();
-        }
+    protected changeStateToInProgress(): void {
+        this.sessionState = SessionState.IN_PROGRESS;
     }
 
-    public playerDisconnects(playerUUID: string): void {
-        const player: Player = this.getPlayer(playerUUID);
-
-        // Update the player's connection status
-        player.isConnected = false;
-        player.lastSeen = Date.now();
+    protected closeGameSession(): void {
+        this.changeStateToEnded();
+        this.sessionNetworking.emitGameEnd();
     }
 
-    public playerLeaves(playerUUID: string): void {
-        this.playerDisconnects(playerUUID);
-        this.handlePlayerLeaves(playerUUID);
-    }
-
-    public validatePlayerIsInSession(playerUUID: string): void {
-        if (!this.hasPlayer(playerUUID)) {
-            throw new PlayerNotInSessionError(playerUUID);
-        }
-    }
-
-    public isInProgress(): boolean {
-        return this.isProgressing;
-    }
-
-    private hasPlayer(playerUUID: string): boolean {
-        return this.players.some(player => player.uuid === playerUUID);
-    }
-
-    private allPlayersJoined(): boolean {
-        return this.players.every(player => player.isConnected);
-    }
-
-    private getPlayer(playerUUID: string): Player {
-        const player: Player | undefined = this.players.find(player => player.uuid === playerUUID);
-        if (player === undefined) {
-            throw new PlayerNotInSessionError(playerUUID);
-        }
-        return player;
-    }
-
-    protected closeGameSession() {
-        this.isProgressing = false;
-        this.messagingService.disconnectAllPlayers()
-        this.emit('gameEnd', this.uuid);
+    private changeStateToEnded(): void {
+        this.sessionState = SessionState.ENDED;
     }
 }

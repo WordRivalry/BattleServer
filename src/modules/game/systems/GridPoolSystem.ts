@@ -10,6 +10,7 @@ import {MessageParsingService} from "../../server_networking/MessageParsingServi
 import {ECManager} from "../../ecs/ECManager";
 import config from "../../../../config";
 import axios from "axios";
+import {ArenaEvent} from "../../oldButNew/Arena";
 
 export class GridPoolSystem extends System {
     requiredComponents = [GridPoolComponent];
@@ -30,10 +31,10 @@ export class GridPoolSystem extends System {
         // Preload the pool
         this.loadPool(gridPoolComponent, 50)
             .then(() => {
-                eventSystem.emitGeneric('gridPoolRefilled', undefined)
+                eventSystem.emitGeneric(ArenaEvent.GRID_POOL_REFILLED, undefined)
             })
             .catch((error) => {
-                console.error("Failed to fill grid pool:", error);
+                this.logger.error("Failed to preload grid pool:", error);
             });
     }
 

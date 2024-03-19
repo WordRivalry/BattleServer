@@ -28,10 +28,13 @@ export class TimerSystem extends System {
                         }
                     }
 
+                    timeComponent.isActive = false;
+
                     if (timeComponent.repeat) {
+                        timeComponent.isActive = true;
                         timeComponent.elapsedTime -= timeComponent.duration; // Allows for precise timing over multiple repeats
                     } else {
-                        ecsManager.removeComponent(entity, TimerComponent);
+                        // Do not remove the component, as it may be needed for reference
                     }
                 }
             }

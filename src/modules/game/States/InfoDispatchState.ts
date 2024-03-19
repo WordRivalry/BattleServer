@@ -1,40 +1,36 @@
 // InfoDispatchState.ts
-import {IState} from "../../ecs/components/StateMachine/IState";
+import {State} from "../../ecs/components/StateMachine/State";
 import {ECManager} from "../../ecs/ECManager";
 import {TypedEventEmitter} from "../../ecs/TypedEventEmitter";
-import {GameIdentityComponent} from "../components/game/GameIdentityComponent";
-import {PlayerIdentityComponent} from "../../ecs/components/player/PlayerIdentityComponent";
-import {PlayerCommunication, PlayerCommunicationEventType} from "../../ecs/systems/network/PlayerCommunicationSystem";
 import {GridComponent} from "../components/game/GridComponent";
+import {GameSessionNetworking} from "../../oldButNew/GameSessionNetworking";
+import {createScopedLogger} from "../../logger/logger";
 
-export class InfoDispatchState implements IState {
-    enter(entity: number, ecManager: ECManager, eventSystem: TypedEventEmitter) {
-        const gameIdentityComponent = ecManager.getComponent(entity, GameIdentityComponent);
-        const gridComponent = ecManager.getComponent(entity, GridComponent);
-        const playerIdentities = ecManager
-            .queryComponents(PlayerIdentityComponent)
-            .forEntitiesWithParent(entity)
-            .execute();
+export class InfoDispatchState extends State {
 
-        playerIdentities.forEach((playerIdentity) => {
-            eventSystem.emitGeneric(
-                PlayerCommunicationEventType.sendMessageToPlayer,
-                () => {
-                    return {
-                        type: "Grid",
-                        gameSessionUUID: gameIdentityComponent.uuid,
-                        playerUUID: playerIdentity.playerUUID,
-                        payload: {
-                            grid: gridComponent.grid
-                        }
-                    } as PlayerCommunication
-                });
-        });
+    private readonly logger = createScopedLogger('InfoDispatchState')
 
-        ecManager.addTag(entity, 201);
+    constructor(private readonly sessionNetworking: GameSessionNetworking) {
+        super();
     }
-    update(deltaTime: number, entity: number, ecManager: ECManager, eventSystem: TypedEventEmitter) {}
-    exit(entity: number, ecManager: ECManager, eventSystem: TypedEventEmitter) {
-        ecManager.removeTag(entity, 201);
+
+    enter(entity: number, ecManager: ECManager, _eventSystem: TypedEventEmitter) {
+        this.logger.context('enter').info(`Entering info dispatch state`);
+        const gridComponent = ecManager.getComponent(entity, GridComponent);
+
+        this.sessionNetworking.broadcastMessage('GameInfo', {
+            duration: 15,
+            grid: gridComponent.grid
+        });
+    }
+
+    update(_deltaTime: number, entity: number, ecManager: ECManager, _eventSystem: TypedEventEmitter) {
+        ecManager.addTag(entity, 200);
+        this.logger.context('update').info(`Updating info dispatch state`);
+    }
+
+    exit(entity: number, ecManager: ECManager, _eventSystem: TypedEventEmitter) {
+        ecManager.removeTag(entity, 200);
+        this.logger.context('exit').info(`Exiting info dispatch state`);
     }
 }

@@ -1,29 +1,28 @@
-import { v4 as uuidv4 } from 'uuid';
-import { GameSession } from './GameSession';
-import { createScopedLogger } from '../logger/logger';
+import {v4 as uuidv4} from 'uuid';
+import {GameSession} from './GameSession';
+import {createScopedLogger} from '../logger/logger';
 import {NormalRankGameSession} from "./NormalRankGameSession";
-import {BadSessionRequestError, SessionNotFoundError} from "../error/Error";
+import {BadSessionRequestError} from "../error/Error";
+import {GameEvent} from "./GameEvent";
+import {TypedEventEmitter} from "../ecs/TypedEventEmitter";
+import {GameEngine} from "../ecs/GameEngine";
+import {Arena} from "./Arena";
 
 export interface PlayerMetadata {
-    uuid: string;
-    username: string;
+    playerName: string;
 }
 
 export class GameSessionManager {
-    private sessions: Map<string, GameSession> = new Map();
+    private sessions: Map<string, { session: GameSession, listenerCancellation: (() => void) | null }> = new Map();
     private logger = createScopedLogger('GameSessionManager');
 
-    constructor() {
-        // Listen for gameEnd events from the game sessions
-        this.sessions.forEach((session: GameSession) => {
-            session.on('gameEnd', (sessionUUID: string) => {
-                this.sessions.delete(sessionUUID);
-                this.logger.context('GameSessionManager').debug('Game session ended', { sessionUUID });
-            });
-        });
-    }
+    constructor(private arena: Arena) {}
 
-    createSession( playersMetadata: PlayerMetadata[], gameMode: string,  modeType: string): string {
+    createSession(
+        playersMetadata: PlayerMetadata[],
+        gameMode: string,
+        modeType: string
+    ): string {
         const sessionUUID: string = uuidv4();
 
         const session: GameSession = this.createGameSession(
@@ -33,27 +32,21 @@ export class GameSessionManager {
             modeType
         );
 
-        this.sessions.set(session.uuid, session);
-        this.logger.context('createSession').debug('Created game session', { sessionUUID });
+        // Register event
+        const cancellation = this.arena.eventSystem.subscribeTargeted(GameEvent.GAME_END, sessionUUID, () => {
+            this.sessions.get(sessionUUID)?.listenerCancellation?.();
+            this.sessions.delete(sessionUUID);
+            this.logger.context('createSession').debug('Game session ended', {sessionUUID});
+        });
+
+        // Store session
+        this.sessions.set(session.gameSessionUUID, {
+            session: session,
+            listenerCancellation: cancellation
+        });
+
+        this.logger.context('createSession').debug('Created game session', {sessionUUID});
         return sessionUUID;
-    }
-
-    getSession(sessionUUID: string): GameSession {
-        const session: GameSession | undefined = this.sessions.get(sessionUUID);
-        if (session === undefined) {
-            throw new SessionNotFoundError(sessionUUID);
-        }
-        return session;
-    }
-
-    handlePlayerTimeout(playerUUID: string, sessionUUID: string) {
-        try {
-            const session = this.getSession(sessionUUID);
-            session.validatePlayerIsInSession(playerUUID);
-            session.playerLeaves(playerUUID);
-        } catch (error) {
-            this.logger.context('handlePlayerTimeout').error('An error occurred', error);
-        }
     }
 
     private createGameSession(sessionUUID: string, playerMetadata: PlayerMetadata[], gameMode: string, gameType: string): GameSession {
@@ -61,17 +54,17 @@ export class GameSessionManager {
             case 'RANK':
                 switch (gameType) {
                     case 'NORMAL':
-                        return new NormalRankGameSession(sessionUUID, playerMetadata, gameMode, gameType);
+                        return new NormalRankGameSession(sessionUUID, playerMetadata, gameMode, gameType, this.arena);
                     case 'BLITZ':
-                        return new NormalRankGameSession(sessionUUID, playerMetadata, gameMode, gameType);
+                        return new NormalRankGameSession(sessionUUID, playerMetadata, gameMode, gameType, this.arena);
                 }
                 break;
             case 'QUICK DUEL':
                 switch (gameType) {
                     case 'NORMAL':
-                        return new NormalRankGameSession(sessionUUID, playerMetadata, gameMode, gameType);
+                        return new NormalRankGameSession(sessionUUID, playerMetadata, gameMode, gameType, this.arena);
                     case 'BLITZ':
-                        return new NormalRankGameSession(sessionUUID, playerMetadata, gameMode, gameType);
+                        return new NormalRankGameSession(sessionUUID, playerMetadata, gameMode, gameType, this.arena);
                 }
                 break;
         }

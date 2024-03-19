@@ -1,39 +1,63 @@
 // PerformingEndGameState.ts
-import {IState} from "../../ecs/components/StateMachine/IState";
+import {State} from "../../ecs/components/StateMachine/State";
 import {ECManager} from "../../ecs/ECManager";
 import {TypedEventEmitter} from "../../ecs/TypedEventEmitter";
-import {GameIdentityComponent} from "../components/game/GameIdentityComponent";
 import {GridComponent} from "../components/game/GridComponent";
-import {PlayerIdentityComponent} from "../../ecs/components/player/PlayerIdentityComponent";
-import {PlayerCommunication, PlayerCommunicationEventType} from "../../ecs/systems/network/PlayerCommunicationSystem";
+import {IdentityComponent} from "../../ecs/components/player/IdentityComponent";
+import {GameSessionNetworking} from "../../oldButNew/GameSessionNetworking";
+import {createScopedLogger} from "../../logger/logger";
+import {ScoreComponent} from "../components/ScoreComponent";
 
-export class PerformingEndGameState implements IState {
+export class PerformingEndGameState extends State {
+
+    private readonly logger = createScopedLogger('PerformingEndGameState')
+
+    constructor(private readonly sessionNetworking: GameSessionNetworking) {
+        super();
+    }
+
     enter(entity: number, ecManager: ECManager, eventSystem: TypedEventEmitter) {
-        const gameIdentityComponent = ecManager.getComponent(entity, GameIdentityComponent);
         const gridComponent = ecManager.getComponent(entity, GridComponent);
-        const playerIdentities = ecManager
-            .queryComponents(PlayerIdentityComponent)
-            .forEntitiesWithParent(entity)
+        const identityComponent = ecManager.getComponent(entity, IdentityComponent);
+        const playerEntities = ecManager
+            .queryEntities()
+            .withParent(entity)
+            .withComponent(IdentityComponent)
             .execute();
 
-        playerIdentities.forEach((playerIdentity) => {
-            eventSystem.emitGeneric(
-                PlayerCommunicationEventType.sendMessageToPlayer,
-                () => {
-                    return {
-                        type: "EndGameResult",
-                        gameSessionUUID: gameIdentityComponent.uuid,
-                        playerUUID: playerIdentity.playerUUID,
-                        payload: {
-                            msg: "Hello World!"
-                        }
-                    } as PlayerCommunication
-                });
+        // Tuple of playerIdentity and their score
+        const playerScores: [IdentityComponent, ScoreComponent][] = [];
+        playerEntities.forEach((playerEntity) => {
+            const scoreComponent = ecManager.getComponent(playerEntity, ScoreComponent);
+            const playerIdentity = ecManager.getComponent(playerEntity, IdentityComponent);
+            playerScores.push([playerIdentity, scoreComponent]);
         });
+
+        // Sort by score
+        playerScores.sort((a, b) => {
+            return b[1].score - a[1].score;
+        });
+
+        // Broadcast end game
+        this.sessionNetworking.broadcastMessage('EndGameResult', {
+            winner: playerScores[0][0].identity,
+            grid: gridComponent.grid,
+            scores: playerScores.map(([playerIdentity, scoreComponent]) => {
+                return {
+                    playerId: playerIdentity.identity,
+                    score: scoreComponent.score
+                }
+            })
+        });
+
+        eventSystem.emitTargeted('endGame', identityComponent.identity, {});
     }
-    update(deltaTime: number, entity: number, ecManager: ECManager, eventSystem: TypedEventEmitter) {
+
+    update(_deltaTime: number, entity: number, ecManager: ECManager, _eventSystem: TypedEventEmitter) {
+        ecManager.addTag(entity, 202);
     }
-    exit(entity: number, ecManager: ECManager, eventSystem: TypedEventEmitter) {
-        // Cleanup or prepare for the next state
+
+    exit(entity: number, ecManager: ECManager, _eventSystem: TypedEventEmitter) {
+        ecManager.removeTag(entity, 202);
     }
 }

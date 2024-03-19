@@ -4,7 +4,7 @@ import {ECManager} from "../../ecs/ECManager";
 import {TypedEventEmitter} from "../../ecs/TypedEventEmitter";
 import {GameEvent} from "../../ecs/systems/network/NetworkSystem";
 import {ConnectionPayload} from "../../server_networking/WebSocketMessageHandler";
-import {PlayerIdentityComponent} from "../../ecs/components/player/PlayerIdentityComponent";
+import {IdentityComponent} from "../../ecs/components/player/IdentityComponent";
 import {PlayerConnectionComponent} from "../../ecs/components/player/PlayerConnectionComponent";
 import {MissedMessageComponent} from "../../ecs/components/network/MissedMessageComponent";
 
@@ -14,12 +14,12 @@ export class ConnectionEventSystem extends System {
 
     init(ecManager: ECManager, eventSystem: TypedEventEmitter): void {
         eventSystem.subscribeGeneric<ConnectionPayload>(GameEvent.PLAYER_CONNECTS, (payload: ConnectionPayload) => {
-            const playerUUID = payload.playerUUID;
+            const playerUUID = payload.playerName;
             const socket = payload.socket;
 
             const playerEntity = ecManager.queryEntities()
                 .withComponentCondition(
-                    PlayerIdentityComponent,
+                    IdentityComponent,
                     (component) => component.playerUUID === playerUUID
                 )
                 .getOne();

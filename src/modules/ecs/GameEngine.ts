@@ -7,6 +7,7 @@ import {EngineClock} from "./EngineClock";
 import {createScopedLogger} from "../logger/logger";
 import {ECManager} from "./ECManager";
 import {GlobalComponent} from "./components/GlobalComponent";
+import {TimerSystem} from "./systems/timer/TimerSystem";
 
 export class GameEngine {
     public readonly systemManager: SystemManager;
@@ -23,6 +24,7 @@ export class GameEngine {
         this.systemManager = new SystemManager(this.ecManager, this.eventSystem);
         const globalEntity = this.ecManager.createEntity();
         this.ecManager.addComponent(globalEntity, GlobalComponent, new GlobalComponent());
+        this.systemManager.registerSystem(new TimerSystem());
     }
 
     public start(): void {
@@ -43,7 +45,7 @@ export class GameEngine {
     }
 
     private engineLoop(): void {
-        const tickRate = 2000; // ms
+        const tickRate = 1000; // ms
         const update = () => {
             if (!this.running) return;
             const deltaTime = this.engineClock.update();

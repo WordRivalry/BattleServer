@@ -48,16 +48,16 @@ describe('TimerSystem', () => {
         expect(componentManager.removeComponent).not.toHaveBeenCalledWith(entity, TimerComponent);
     });
 
-    // it('should remove component when duration is reached and repeat is false', () => {
-    //     const callback = jest.fn();
-    //     const timerComponent = new TimerComponent(500, false, callback);
-    //     componentManager.getComponent.mockReturnValueOnce(timerComponent);
-    //
-    //     system.update(500, [entity], ecsManager); // Reach duration
-    //
-    //     expect(callback).toHaveBeenCalledTimes(1);
-    //     expect(componentManager.removeComponent).toHaveBeenCalledWith(entity, TimerComponent);
-    // });
+    it('should turn timer to inactive state when duration is reached and repeat is false', () => {
+        const callback = jest.fn();
+        const timerComponent = new TimerComponent(500, false, callback);
+        componentManager.getComponent.mockReturnValueOnce(timerComponent);
+
+        system.update(500, [entity], ecsManager); // Reach duration
+
+        expect(callback).toHaveBeenCalledTimes(1);
+        expect(timerComponent.isActive).toBe(false);
+    });
 
     it('should not execute callback before duration is reached', () => {
         const callback = jest.fn();

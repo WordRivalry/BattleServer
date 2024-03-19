@@ -7,7 +7,7 @@ import {v4 as uuidv4} from "uuid";
 import {PlayerConnectionComponent} from "../../components/player/PlayerConnectionComponent";
 import {createScopedLogger} from "../../../logger/logger";
 import {ECManager} from "../../ECManager";
-import {PlayerIdentityComponent} from "../../components/player/PlayerIdentityComponent";
+import {IdentityComponent} from "../../components/player/IdentityComponent";
 import {WebSocket} from "ws";
 
 export interface PlayerCommunication {

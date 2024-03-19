@@ -7,11 +7,9 @@ import http from 'http';
 import config from "../../../config";
 
 export interface IMessageHandler {
-    handleMessage(ws: WebSocket, message: RawData, playerUUID: string, gameSessionUUID: string): void;
-
-    handleConnection(ws: WebSocket, playerUUID: string, gameSessionUUID: string): void;
-
-    handleDisconnect(playerUUID: string | undefined, gameSessionUUID: string | undefined): void;
+    handleMessage(message: RawData, playerName: string, gameSessionUUID: string): void;
+    handleConnection(ws: WebSocket, playerName: string, gameSessionUUID: string): void;
+    handleDisconnect(playerName: string | undefined, gameSessionUUID: string | undefined): void;
 }
 
 export class WebSocketManager {
@@ -32,11 +30,11 @@ export class WebSocketManager {
                 return;
             }
 
-            // Extract the game session UUID and player UUID from the request
+            // Extract from header
             const gameSessionUUID: string | undefined = request.headers['x-game-session-uuid'] as string | undefined;
-            const playerUUID: string | undefined = request.headers['x-player-uuid'] as string | undefined;
+            const playerName: string | undefined = request.headers['x-player-name'] as string | undefined;
 
-            if (!gameSessionUUID || !playerUUID) {
+            if (!gameSessionUUID || !playerName) {
                 socket.write('HTTP/1.1 400 Bad Request\r\n\r\n');
                 socket.destroy();
                 return;
@@ -61,19 +59,19 @@ export class WebSocketManager {
     private setupWebSocketServer(): void {
         this.wss.on('connection', (ws, request) => {
             const gameSessionUUID = request.headers['x-game-session-uuid'] as string;
-            const playerUUID = request.headers['x-player-uuid'] as string;
+            const playerName = request.headers['x-player-name'] as string;
 
             try {
-                this.messageHandler.handleConnection(ws, playerUUID, gameSessionUUID);
+                this.messageHandler.handleConnection(ws, playerName, gameSessionUUID);
             } catch (error) {
                 ErrorHandlingService.sendError(ws, error);
             }
 
             ws.on('message', (message: RawData) => {
                 try {
-                    this.messageHandler.handleMessage(ws, message, playerUUID, gameSessionUUID);
+                    this.messageHandler.handleMessage(message, playerName, gameSessionUUID);
                 } catch (error) {
-                    ErrorHandlingService.sendError(ws, error);
+                   ErrorHandlingService.sendError(ws, error);
                 }
             });
 
@@ -89,7 +87,7 @@ export class WebSocketManager {
                 }
 
                 try {
-                    this.messageHandler.handleDisconnect(playerUUID, gameSessionUUID);
+                    this.messageHandler.handleDisconnect(playerName, gameSessionUUID);
                 } catch (error) {
                     ErrorHandlingService.sendError(ws, error);
                 }

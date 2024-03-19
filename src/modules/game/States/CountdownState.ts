@@ -1,44 +1,46 @@
 // CountdownState.ts
-import {IState} from "../../ecs/components/StateMachine/IState";
+import {State} from "../../ecs/components/StateMachine/State";
 import {ECManager} from "../../ecs/ECManager";
 import {TimerComponent} from "../../ecs/components/TimerComponent";
 import {TypedEventEmitter} from "../../ecs/TypedEventEmitter";
-import {PlayerCommunication, PlayerCommunicationEventType} from "../../ecs/systems/network/PlayerCommunicationSystem";
-import {GameIdentityComponent} from "../components/game/GameIdentityComponent";
-import {PlayerIdentityComponent} from "../../ecs/components/player/PlayerIdentityComponent";
+import {GameSessionNetworking} from "../../oldButNew/GameSessionNetworking";
+import {createScopedLogger} from "../../logger/logger";
 
-export class CountdownState implements IState {
-    enter(entity: number, ecManager: ECManager, eventSystem: TypedEventEmitter) {
+export class CountdownState extends State {
+
+    private readonly logger = createScopedLogger('CountdownState')
+
+    constructor(private readonly sessionNetworking: GameSessionNetworking) {
+        super();
+    }
+
+    enter(entity: number, ecManager: ECManager, _eventSystem: TypedEventEmitter) {
+        this.logger.context('enter').info(`Entering countdown state`);
+
         // Set timer
         const timerComponent = new TimerComponent(3000, false);
         ecManager.addComponent(entity, TimerComponent, timerComponent);
 
-        // Send countdown duration to all players
-        const gameIdentityComponent = ecManager.getComponent(entity, GameIdentityComponent);
-        const playerIdentities = ecManager
-            .queryComponents(PlayerIdentityComponent)
-            .forEntitiesWithParent(entity)
-            .execute();
-
-        playerIdentities.forEach((playerIdentity) => {
-            eventSystem.emitGeneric(
-                PlayerCommunicationEventType.sendMessageToPlayer,
-                () => {
-                    return {
-                        type: "countdown",
-                        gameSessionUUID: gameIdentityComponent.uuid,
-                        playerUUID: playerIdentity.playerUUID,
-                        payload: {
-                            time: timerComponent.duration
-                        }
-                    } as PlayerCommunication
-                });
+        // Broadcast countdown
+        this.sessionNetworking.broadcastMessage('PreGameCountdown', {
+            countdown: timerComponent.duration - timerComponent.elapsedTime
         });
     }
 
-    update(_deltaTime: number, _entity: number, _ecManager: ECManager, _eventSystem: TypedEventEmitter) {}
+    update(_deltaTime: number, entity: number, ecManager: ECManager, _eventSystem: TypedEventEmitter) {
+        // Fetch timer component and check if it's done
+        const timerComponent = ecManager.getComponent(entity, TimerComponent);
+
+        // Broadcast countdown
+        this.sessionNetworking.broadcastMessage('countdown', {
+            countdown: timerComponent.duration - timerComponent.elapsedTime
+        });
+
+        this.logger.context('update').info('Updating countdown state');
+    }
 
     exit(gameEntity: number, ecManager: ECManager, _eventSystem: TypedEventEmitter) {
         ecManager.removeComponent(gameEntity, TimerComponent);
+        this.logger.context('exit').info('Exiting countdown state');
     }
 }

@@ -4,77 +4,65 @@ import {IMessageHandler} from './WebSocketManager';
 import {UnknownPlayerError, UnknownGameSessionError, ValidationFailedError} from "../error/Error";
 import {MessageParsingService} from "./MessageParsingService";
 import {ActionType, PlayerAction} from "./validation/messageType";
-import {GameSessionManager} from "../oldButNew/GameSessionManager";
-import {PlayerSessionValidationAndManagement} from "../oldButNew/PlayerSessionValidationAndManagement";
-import {GameSession} from "../oldButNew/GameSession";
+import {GameEvent} from "../oldButNew/GameEvent";
+import {TypedEventEmitter} from "../ecs/TypedEventEmitter";
 
 export interface ConnectionPayload {
-    gameSessionUUID: string,
-    playerUUID: string,
+    playerName: string,
     socket: WebSocket
 }
 
 export interface PlayerActionPayload {
-    gameSessionUUID: string,
-    playerUUID: string,
+    playerName: string,
     action: PlayerAction
 }
 
 export interface PlayerDisconnectionPayload {
-    gameSessionUUID: string,
-    playerUUID: string
+    playerName: string
 }
 
 export class WebSocketMessageHandler implements IMessageHandler {
 
-    // constructor(private eventSystem: TypedEventEmitter) {
-    // }
+    constructor(private eventEmitter: TypedEventEmitter) {}
 
-    constructor(
-        private gameSessionManager: GameSessionManager,
-        private playerService: PlayerSessionValidationAndManagement,
-    ) {}
-
-
-    public handleConnection(ws: WebSocket, playerUUID: string, gameSessionUUID: string): void {
-        this.playerService.validatePlayerConnection(playerUUID, gameSessionUUID)
-        ws.send(JSON.stringify({ type: 'success', message: 'Connection established' }));
-
-        const session = this.gameSessionManager.getSession(gameSessionUUID);
-        if (session.isInProgress()) {
-            // Reconnection handling for in-progress game session
-            this.playerService.handleReconnection(playerUUID, gameSessionUUID, ws);
-        } else {
-            session.playerJoins(playerUUID, ws);
-        }
+    public handleConnection(ws: WebSocket, playerName: string, gameSessionUUID: string): void {
+        this.eventEmitter.emitTargeted<ConnectionPayload>(GameEvent.PLAYER_JOINED, gameSessionUUID, {
+            playerName: playerName,
+            socket: ws
+        });
     }
 
-    handleMessage(ws: WebSocket, message: RawData, playerUUID: string, gameSessionUUID: string): void {
-        const session: GameSession = this.gameSessionManager.getSession(gameSessionUUID);
-        session.validatePlayerIsInSession(playerUUID);
+    public handleMessage(message: RawData, playerName: string, gameSessionUUID: string): void {
         const parsedMessage = MessageParsingService.parseAndValidateMessage(message);
 
         switch (parsedMessage.type) {
-            case ActionType.LEAVE_GAME_SESSION:
-                session.playerLeaves(playerUUID);
+            case ActionType.PLAYER_LEFT_SESSION:
+                this.eventEmitter.emitTargeted(GameEvent.PLAYER_LEFT, gameSessionUUID, {
+                    playerName: playerName
+                });
                 break;
             case ActionType.PLAYER_ACTION:
-                session.handlePlayerAction(playerUUID, parsedMessage);
+                this.eventEmitter.emitTargeted<PlayerActionPayload>(GameEvent.PLAYER_ACTION, gameSessionUUID, {
+                    playerName: playerName,
+                    action: parsedMessage
+                });
                 break;
             default:
                 throw new ValidationFailedError();
         }
     }
 
-    handleDisconnect(playerUUID: string | undefined, gameSessionUUID: string | undefined): void {
-        if (playerUUID === undefined) {
-            throw new UnknownPlayerError("Player UUID is undefined");
+    public handleDisconnect(playerName: string | undefined, gameSessionUUID: string | undefined): void {
+        if (playerName === undefined) {
+            throw new UnknownPlayerError("Player Name is undefined");
         }
 
         if (gameSessionUUID === undefined) {
             throw new UnknownGameSessionError("Game session UUID is undefined");
         }
 
-        this.playerService.handleDisconnection(playerUUID, gameSessionUUID);
+        this.eventEmitter.emitTargeted<PlayerDisconnectionPayload>(GameEvent.PLAYER_LOST_CONNECTION, gameSessionUUID, {
+            playerName: playerName
+        });
     }
 }

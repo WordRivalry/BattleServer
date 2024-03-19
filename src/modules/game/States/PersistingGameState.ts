@@ -1,15 +1,22 @@
 // PersistingGameState.ts
-import {IState} from "../../ecs/components/StateMachine/IState";
+import {State} from "../../ecs/components/StateMachine/State";
 import {ECManager} from "../../ecs/ECManager";
 import {TypedEventEmitter} from "../../ecs/TypedEventEmitter";
+import {createScopedLogger} from "../../logger/logger";
 
-export class PersistingGameState implements IState {
+export class PersistingGameState extends State {
+
+    private readonly logger = createScopedLogger('PersistingGameState')
+
     enter(entity: number, ecManager: ECManager, eventSystem: TypedEventEmitter) {
-        // No need to do anything here
+        this.logger.context('enter').info(`Entering persisting game state`);
     }
     update(deltaTime: number, entity: number, ecManager: ECManager, eventSystem: TypedEventEmitter) {
+        ecManager.addTag(entity, 203);
+        this.logger.context('update').info(`Tagging entity with 202`);
     }
     exit(entity: number, ecManager: ECManager, eventSystem: TypedEventEmitter) {
-        // Cleanup or prepare for the next state
+        ecManager.removeTag(entity, 203);
+        this.logger.context('exit').info(`Removing tag 202 from entity`);
     }
 }

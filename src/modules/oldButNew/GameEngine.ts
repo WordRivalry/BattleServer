@@ -1,16 +1,15 @@
-// GameFlowManager.ts
-
+// GameEngine.ts
 import {CompleteCallback, GameClock, TickCallback} from './GameClock';
 import {LetterGrid, LetterTile} from "./LetterGrid";
-
-import {PlayerUUID, Timestamp} from "../../types";
+import {createScopedLogger} from "../logger/logger";
+import {Timestamp} from "../../types";
 import axios from "axios";
 import config from "../../../config";
-import {createScopedLogger} from "../logger/logger";
 
 export type Row = number;
 export type Col = number;
 export type Path = [Row, Col][];
+export type GameOverChecker =  "BestOfOne" | "BestOfThree";
 
 export interface PlayerRoundData {
     score: number;
@@ -19,12 +18,12 @@ export interface PlayerRoundData {
 
 export type WinnerResult = {
     status: 'singleWinner' | 'tie' | 'ranked';
-    winners: PlayerUUID[]; // In case of 'ranked', it contains UUIDs in ranked order. For 'tie', all tied player UUIDs.
+    winners: string[]; // In case of 'ranked', it contains UUIDs in ranked order. For 'tie', all tied player UUIDs.
 };
 
 export interface RoundData {
     roundNumber: number;
-    playerData: Map<PlayerUUID, PlayerRoundData>;
+    playerData: Map<string, PlayerRoundData>;
     winner: WinnerResult | undefined;
     grid: LetterGrid;
     startTime: number;
@@ -36,13 +35,10 @@ export type GameEngineState = 'undefined' | 'preGame' | 'inRound' | 'intermissio
 
 export interface GameEngineDelegate {
     onRoundStart: (roundData: RoundData) => void;
-    onScoreUpdate: (playerUuid: PlayerUUID, score: number) => void;
+    onScoreUpdate: (playerName: string, score: number) => void;
     onRoundEnd: (roundData: RoundData) => void;
-    // Called when the game ends
     onGameEnd: (winner: WinnerResult) => void;
-
-    // For real-time games, providing periodic time updates could be beneficial.
-    onTimeUpdate: (remainingTime: number) => void;
+    onTick: (remainingTime: number) => void;
 }
 
 export class GameEngine {
@@ -66,9 +62,6 @@ export class GameEngine {
 
     constructor() {
 
-        // If prod use fetchAndApplyMultipliers, else use defaultGridGenerator
-
-
         // Initial configuration
         this.config = {
             roundDuration: 360,
@@ -76,7 +69,7 @@ export class GameEngine {
             gridSize: 5,
             wordScoreCalculator: this.defaultWordScoreCalculator.bind(this),
             gridGenerator: config.nodeEnv === 'production' ? this.fetchAndApplyMultipliers.bind(this) : this.defaultGridGenerator.bind(this),
-            checkGameOver: this.defaultCheckGameOver.bind(this),
+            checkGameOver: this.bestOfThree.bind(this),
             gameWinnerDeterminator: this.defaultGameWinnerDeterminator.bind(this),
             roundWinnerDeterminator: this.defaultRoundWinnerDeterminator.bind(this),
         };
@@ -90,7 +83,13 @@ export class GameEngine {
     // Getters
 
     public getCurrentRound(): RoundData | undefined {
-        return this.rounds[this.currentRoundIndex];
+        const currentRound = this.rounds[this.currentRoundIndex];
+        if (currentRound) {
+            return currentRound;
+        } else {
+            this.logger.context('getCurrentRound').warn('No current round found');
+            return undefined;
+        }
     }
 
     public getRounds(): RoundData[] {
@@ -126,8 +125,12 @@ export class GameEngine {
         this.config.gridGenerator = generator.bind(this);
     }
 
-    public setCheckGameOver(checker: (rounds: RoundData[]) => boolean): void {
-        this.config.checkGameOver = checker.bind(this);
+    public setCheckGameOver(checker: GameOverChecker): void {
+        if (checker === 'BestOfOne') {
+            this.config.checkGameOver = this.bestOfOne.bind(this);
+        } else if (checker === 'BestOfThree') {
+            this.config.checkGameOver = this.bestOfThree.bind(this);
+        }
     }
 
     public setWinnerDeterminator(determinator: (rounds: RoundData[]) => WinnerResult): void {
@@ -153,7 +156,7 @@ export class GameEngine {
     }
 
     private onTick: TickCallback = (remainingTime: number): void => {
-        this.delegate?.onTimeUpdate(remainingTime);
+        this.delegate?.onTick(remainingTime);
     };
 
     private onRoundComplete: CompleteCallback = (): void => {
@@ -197,17 +200,17 @@ export class GameEngine {
         this.currentState = newState;
     }
 
-    public addWord(playerUuid: string, wordPath: Path): void {
+    public addWord(playerUUID: string, wordPath: Path): void {
         if (this.currentState === 'inRound' && this.gameClock?.getRemainingTime()) {
             let grid = this.getCurrentRoundGrid();
             if (grid) {
                 const word = this.getPathLetterTiles(wordPath, grid);
                 const baseScore = this.config.wordScoreCalculator(word);
 
-                let playerData = this.rounds[this.currentRoundIndex].playerData.get(playerUuid);
+                let playerData = this.rounds[this.currentRoundIndex].playerData.get(playerUUID);
                 if (!playerData) {
                     playerData = { score: 0, words: [] };
-                    this.rounds[this.currentRoundIndex].playerData.set(playerUuid, playerData);
+                    this.rounds[this.currentRoundIndex].playerData.set(playerUUID, playerData);
                 }
 
                 playerData.score += baseScore;
@@ -216,8 +219,10 @@ export class GameEngine {
                 playerData.words.push([this.config.roundDuration - this.gameClock?.getRemainingTime(), wordPath]);
 
                 // Invoke the delegate's onScoreUpdate method
-                this.delegate?.onScoreUpdate(playerUuid, playerData.score);
+                this.delegate?.onScoreUpdate(playerUUID, playerData.score);
             }
+        } else {
+            this.logger.context('addWord').warn('Invalid state or round has ended');
         }
     }
 
@@ -247,8 +252,33 @@ export class GameEngine {
     // Default implementations //
     /////////////////////////////
 
-    private defaultCheckGameOver(): boolean {
-        const roundVictories = new Map<PlayerUUID, number>();
+
+    private bestOfOne(): boolean {
+        const roundVictories = new Map<string, number>();
+
+        this.rounds.forEach((round) => {
+            const winners = round.winner;
+            if (winners && winners.status !== 'tie') { // ties do not contribute
+                winners.winners.forEach((winner) => {
+                    roundVictories.set(winner, (roundVictories.get(winner) || 0) + 1);
+                });
+            }
+        });
+
+        let gameOver = false;
+
+        // Explicitly checking for 2 victories, suitable for "best of 3" format
+        roundVictories.forEach((victories) => {
+            if (victories >= 2) {
+                gameOver = true;
+            }
+        });
+
+        return gameOver;
+    }
+
+    private bestOfThree(): boolean {
+        const roundVictories = new Map<string, number>();
 
         this.rounds.forEach((round) => {
             const winners = round.winner;
@@ -272,7 +302,7 @@ export class GameEngine {
     }
 
     defaultGameWinnerDeterminator(): WinnerResult {
-        const totalScores = new Map<PlayerUUID, number>();
+        const totalScores = new Map<string, number>();
 
         this.rounds.forEach((roundData) => {
             roundData.playerData.forEach((data, uuid) => {
@@ -284,13 +314,13 @@ export class GameEngine {
     }
 
     defaultRoundWinnerDeterminator(round: RoundData): WinnerResult {
-        const totalScores = new Map<PlayerUUID, number>();
+        const totalScores = new Map<string, number>();
         round.playerData.forEach((data, uuid) => totalScores.set(uuid, data.score));
 
         return this.determineWinners(totalScores);
     }
 
-    private determineWinners(scores: Map<PlayerUUID, number>): WinnerResult {
+    private determineWinners(scores: Map<string, number>): WinnerResult {
         this.logger.context('determineWinners').debug('Scores', { scores });
 
         if (scores.size === 0) {
@@ -314,7 +344,6 @@ export class GameEngine {
                 result = { status: 'ranked', winners: sortedScores.map(([uuid]) => uuid) };
             }
         }
-
         return result;
     }
 

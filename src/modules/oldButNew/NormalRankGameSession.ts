@@ -1,182 +1,228 @@
-import {clearInterval} from "timers";
 import {GameSession} from "./GameSession";
-import {GameEngine, GameEngineDelegate, RoundData, WinnerResult} from "./GameEngine";
 import {createScopedLogger} from "../logger/logger";
-import {PlayerUUID} from "../../types";
 import {PlayerMetadata} from "./GameSessionManager";
-import {Path} from "./GameEngine";
-import {PlayerAction_PublishWord} from "../server_networking/validation/messageType";
+import {Path, PlayerAction_PublishWord} from "../server_networking/validation/messageType";
+import {Arena} from "./Arena";
+import {WaitingState} from "../game/States/WaitingState";
+import {InfoDispatchState} from "../game/States/InfoDispatchState";
+import {CountdownState} from "../game/States/CountdownState";
+import {InProgressState} from "../game/States/InProgressState";
+import {PerformingEndGameState} from "../game/States/PerformingEndGameState";
+import {PersistingGameState} from "../game/States/PersistingGameState";
+import {FinishedState} from "../game/States/FinishedState";
+import {StateMachineComponent} from "../ecs/components/StateMachine/StateMachineComponent";
+import {TimerComponent} from "../ecs/components/TimerComponent";
+import {IdentityComponent} from "../ecs/components/player/IdentityComponent";
+import {ScoreComponent} from "../game/components/ScoreComponent";
+import {PlayerControllerComponent} from "../ecs/components/player/PlayerControllerComponent";
+import {NormalRankComponent} from "../game/components/NormalRankComponent";
+import {SubmitWordCommandComponent} from "../game/components/SubmitWordCommandComponent";
+import {PlayerScoreUpdateEvent} from "../game/systems/SubmitWordCommandSystem";
 
-export class NormalRankGameSession extends GameSession implements GameEngineDelegate {
-    private readonly gameEngine: GameEngine = new GameEngine();
-    private NormalRankLogger = createScopedLogger('NormalRankGameSession');
+export enum NormalRankGameEvent {
+    PUBLISH_WORD = 'publishWord'
+}
+
+export interface PublishWordEvent {
+    wordPath: Path;
+    playerName: string;
+}
+
+export class NormalRankGameSession extends GameSession {
+    private logger = createScopedLogger('NormalRankGameSession');
+    private readonly fsm: StateMachineComponent;
+    private readonly gameEntity: number;
 
     constructor(
-        public uuid: string,
+        public gameSessionUUID: string,
         public playersMetadata: PlayerMetadata[],
         public gameMode: string,
-        public modeType: string
+        public modeType: string,
+        private readonly arena: Arena,
     ) {
-
         super(
-            uuid,
+            gameSessionUUID,
             playersMetadata,
             gameMode,
-            modeType
+            modeType,
+            arena.eventSystem
         );
 
-        // Initialize the game engine
-        this.gameEngine.setGridSize(4);
-        this.gameEngine.setRoundDuration(30000);
-       // this.gameEngine.setIntermissionDuration(5000);
+        this.gameEntity = this.arena.createEntity();
 
-        // Set the delegates
-        this.gameEngine.setDelegate(this);
+        const gameIdentityComponent = new IdentityComponent(gameSessionUUID);
+        this.arena.attachComponent(this.gameEntity, IdentityComponent, gameIdentityComponent);
+
+        // Finite State Machine
+        this.fsm = this.setFSM();
+        this.arena.attachStates(this.gameEntity, this.fsm);
+
+        // Set the players
+        this.setPlayers(this.gameEntity);
+
+        // Register game engine listeners
+        this.registerGameEngineListener();
     }
 
-    private startCountdown() {
-        this.isProgressing = true;
-        let countdown = 3;
-        const intervalId = setInterval(async () => {
-            // Send the countdown message to both players
-            this.messagingService.publish('gameStartCountdown', countdown, 'all')
+    /////////////////////////////////////////////////
+    //               Arena preparation             //
+    /////////////////////////////////////////////////
 
-            if (countdown > 1) {
-                countdown--; // Decrease the countdown
-            } else {
-                // Countdown has finished, clear the interval
-                clearInterval(intervalId);
+    private setFSM(): StateMachineComponent {
+        const stateMachineComponent = new StateMachineComponent(WaitingState);
+        const infoDispatchState = new InfoDispatchState(this.sessionNetworking);
+        const countdownState = new CountdownState(this.sessionNetworking);
+        const inProgressState = new InProgressState(this.sessionNetworking);
+        const performEndGame = new PerformingEndGameState(this.sessionNetworking);
+        const persistingGame = new PersistingGameState();
+        const finishedState = new FinishedState();
 
-                // Now actually start the game
-                await this.gameEngine.startGame();
-            }
-        }, 1000);
+        stateMachineComponent.addTransition(
+            WaitingState,
+            InfoDispatchState,
+            infoDispatchState,
+            () => {
+            return this.sessionNetworking.isAllPlayersConnected();
+        });
+
+        stateMachineComponent.addTransition(
+            InfoDispatchState,
+            CountdownState,
+            countdownState,
+            (gameEntity: number, ecManager) => {
+            return ecManager.hasTag(gameEntity, 201);
+        });
+
+        stateMachineComponent.addTransition(
+            CountdownState,
+            InProgressState,
+            inProgressState,
+            (gameEntity: number, ecManager) => {
+            return ecManager.getComponent(gameEntity, TimerComponent)?.isActive === false;
+        });
+
+        stateMachineComponent.addTransition(
+            InProgressState,
+            PerformingEndGameState,
+            performEndGame,
+            (gameEntity: number, ecManager) => {
+            return ecManager.getComponent(gameEntity, TimerComponent)?.isActive === false;
+        });
+
+        stateMachineComponent.addTransition(
+            PerformingEndGameState,
+            PersistingGameState,
+            persistingGame,
+            (gameEntity: number, ecManager) => {
+            return ecManager.hasTag(gameEntity, 202);
+        });
+
+        stateMachineComponent.addTransition(
+            PersistingGameState,
+            FinishedState,
+            finishedState,
+            (gameEntity: number, ecManager) => {
+            return ecManager.hasTag(gameEntity, 203);
+        });
+
+        return stateMachineComponent;
     }
 
-    public updateScore(playerUuid: PlayerUUID, wordPath: Path): void {
-        const round = this.gameEngine.getCurrentRound();
-        if (!round) return;
-        this.gameEngine.addWord(playerUuid, wordPath);
-    }
+    private setPlayers(gameEntity: number) {
+        this.playersMetadata.map(playerMetadata => {
+            const playerEntity = this.arena.createEntity();
 
-    //////////////////////////////////////////////////
-    //             Game engine delegates            //
-    //////////////////////////////////////////////////
-    onRoundStart(roundData: RoundData): void {
-        let payload = {
-            round: roundData.roundNumber + 1, duration: roundData.duration, grid: roundData.grid,
-        };
+            // Player identity component
+            this.arena.attachComponent(
+                playerEntity,
+                IdentityComponent,
+                new IdentityComponent(playerMetadata.playerName)
+            );
 
-        // Send the grid to all players
-        this.messagingService.publish('roundStart', payload, 'all');
+            // Score component
+            this.arena.attachComponent(
+                playerEntity,
+                ScoreComponent,
+                new ScoreComponent()
+            );
 
-        this.NormalRankLogger.context('notifyPlayersRoundStart').info('Round started', {round: roundData.roundNumber + 1, gameSessionUUID: this.uuid});
-    }
+            // Player controller component
+            this.arena.attachComponent(
+                playerEntity,
+                PlayerControllerComponent,
+                new PlayerControllerComponent()
+            );
 
-    onScoreUpdate(playerUuid: PlayerUUID, score: number): void {
+            // Enable targeting the right system
+            this.arena.attachComponent(playerEntity, NormalRankComponent, new NormalRankComponent());
 
-        const scoreUpdateMessage = {
-            playerUuid: playerUuid, newScore: score,
-        };
-
-        // Broadcast the updated score to all players except the one who scored
-        this.messagingService.publish('opponentScoreUpdate', scoreUpdateMessage, this.playersMetadata.filter(player => player.uuid !== playerUuid).map(player => player.uuid));
-
-        this.NormalRankLogger.context('notifyPlayersScoreUpdate').info('Score updated', {playerUuid, newScore: score, gameSessionUUID: this.uuid});
-    }
-
-    onRoundEnd(round: RoundData): void {
-        // Assume round.winner is already determined by the game engine and is of type WinnerResult
-        let winnerResult: WinnerResult
-
-        if (round.winner) {
-            winnerResult = round.winner;
-        } else {
-            this.NormalRankLogger.context('notifyPlayersIntermission').warn('Winner result is not available', {gameSessionUUID: this.uuid});
-            return;
-        }
-
-        // Notify each player with their personalized end round summary
-        this.playersMetadata.forEach((metadata: PlayerMetadata) => {
-            const playerData = round.playerData.get(metadata.uuid);
-            const playerScore = playerData ? playerData.score : 0;
-            const playerUUID = metadata.uuid as PlayerUUID;
-
-            // Calculate the total score of all opponents for comparison
-            let opponentScoreTotal = 0;
-            round.playerData.forEach((data, opUuid) => {
-                if (opUuid !== playerUUID) {
-                    opponentScoreTotal += data.score;
-                }
-            });
-
-            // Prepare the payload for the end of round summary
-            let endRoundPayload: any = {
-                round: round.roundNumber, yourScore: playerScore, opponentScoreTotal: opponentScoreTotal, // This could be adjusted based on presentation preferences
-            };
-
-            // Adjust the payload based on the winner result
-            switch (winnerResult.status) {
-                case 'singleWinner':
-                    endRoundPayload.winner = winnerResult.winners[0] === metadata.uuid ? 'You' : 'Opponent';
-                    break;
-                case 'tie':
-                    endRoundPayload.winner = 'tie';
-                    break;
-                case 'ranked':
-                    // If ranked, determine if the player is among the winners, and their rank
-                    const rank = winnerResult.winners.indexOf(metadata.uuid) + 1; // +1 to make it 1-indexed
-                    endRoundPayload.winner = rank > 0 ? `Rank ${rank}` : 'Not ranked';
-                    break;
-            }
-
-            // Send the customized payload to each player
-            this.messagingService.publish('endRound', endRoundPayload, playerUUID);
+            // Assign the player to the game
+            this.arena.assignPlayerToGame(playerEntity, gameEntity);
         });
     }
 
-    onGameEnd(winner: WinnerResult): void {
-        const gameEndPayload = {
-            winner: winner, rounds: this.gameEngine.getRounds(),
-        };
+    //////////////////////////////////////////////////
+    //               Network Delegates              //
+    //////////////////////////////////////////////////
 
-        // Send the game end message to all players
-        this.messagingService.publish('gameEnd', gameEndPayload, 'all');
-        this.NormalRankLogger.context('notifyPlayersGameEnd').debug('Game ended. Winner', {winner, gameSessionUUID: this.uuid});
-        // Emit the game end event
-        this.closeGameSession();
+    override onAPlayerJoined(player: string): void {
+        this.logger.context('onAPlayerJoined').info('Player joined', {player, gameSessionUUID: this.gameSessionUUID});
     }
 
-    onTimeUpdate(remainingTime: number): void {
-        this.messagingService.publish('timeUpdate', remainingTime, 'all');
+    override onAllPlayersJoined(): void {
+        this.logger.context('onAllPlayersJoined').info('All players joined', {gameSessionUUID: this.gameSessionUUID});
+    }
+
+    override onAction(playerName: string, action: PlayerAction_PublishWord): void {
+        this.logger.context('onAction').info('Player action', {player: playerName, action: action.payload.data.wordPath, gameSessionUUID: this.gameSessionUUID});
+        // const submitWordCommandComponent = new SubmitWordCommandComponent(action.payload.data.wordPath);
+        // const playerEntity = this.arena.getPlayerEntity(this.gameEntity, playerName);
+        // this.arena.attachComponent(playerEntity, SubmitWordCommandComponent, submitWordCommandComponent);
+
+        this.arena.eventSystem.emitTargeted<PublishWordEvent>(NormalRankGameEvent.PUBLISH_WORD, this.gameSessionUUID, {
+            wordPath: action.payload.data.wordPath,
+            playerName: playerName
+        });
+    }
+
+    override onPlayerLeft(playerName: string): void {
+        this.logger.context('onPlayerLeft').info('Ending game due to player leaving', {player: playerName, gameSessionUUID: this.gameSessionUUID});
+
+        // Send the game end message to all players
+        this.sessionNetworking.broadcastMessage('gameEndByPlayerLeft', {});
+
+        //  this.gameEngine.endGame();
+        this.fsm.directTransition(PerformingEndGameState);
     }
 
     //////////////////////////////////////////////////
-    //                Abstract methods              //
+    //             Game engine Listeners            //
     //////////////////////////////////////////////////
 
-    override handlePlayerAction(playerUUID: string, action: PlayerAction_PublishWord): void {
-        const round = this.gameEngine.getCurrentRound();
-        if (!round) return;
-        this.gameEngine.addWord(playerUUID, (action.payload.data.wordPath));
+    registerGameEngineListener(): void {
+        this.registerScoreUpdateListener();
+        this.registerGameEndListener();
     }
 
-    override handlePlayerLeaves(playerUUID: string): void {
-        this.NormalRankLogger.context('handlePlayerLeaves').info('Ending game due to player leaving', {playerUUID, gameSessionUUID: this.uuid});
-
-        // End the game and notify the other player of the disconnection
-        const gameEndPayload = {
-            winner: playerUUID ? this.playersMetadata.find(player => player.uuid !== playerUUID)?.uuid : undefined, rounds: this.gameEngine.getRounds()
-        };
-
-        // Send the game end message to all players
-        this.messagingService.publish('gameEndByPlayerLeft', gameEndPayload, 'all');
-        this.gameEngine.endGame();
+    registerScoreUpdateListener(): void {
+        this.arena.eventSystem.subscribeTargeted<PlayerScoreUpdateEvent>('playerScoreUpdate', this.gameSessionUUID, (event) => {
+            // Broadcast the updated score to all players except the one who scored
+            this.sessionNetworking.sendMessage(
+                'playerScoreUpdate',
+                event,
+                this.playersMetadata
+                    .filter(player => player.playerName !== event.playerName)
+                    .map(player => player.playerName)
+            );
+            this.logger.context('notifyPlayersScoreUpdate').info('Score updated', {playerName: event.playerName, newScore: event.score, gameSessionUUID: this.gameSessionUUID});
+        });
     }
 
-    override startGame(): void {
-        // Send the metadata and start the countdown
-        this.isProgressing = true;
-        this.startCountdown();
+    registerGameEndListener(): void {
+
+        this.arena.eventSystem.subscribeTargeted('gameEnd', this.gameSessionUUID, () => {
+            this.logger.context('notifyPlayersGameEnd').info('Game ended', {gameSessionUUID: this.gameSessionUUID});
+            this.closeGameSession();
+        });
     }
 }

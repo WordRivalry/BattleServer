@@ -10,27 +10,46 @@ import {LetterGrid, LetterTile} from "../LetterGrid";
 import {createScopedLogger} from "../../logger/logger";
 import {Path} from "../../server_networking/validation/messageType";
 import {ScoreComponent} from "../components/ScoreComponent";
+import {NormalRankComponent} from "../components/NormalRankComponent";
+import {IdentityComponent} from "../../ecs/components/player/IdentityComponent";
+
+export interface PlayerScoreUpdateEvent {
+    playerName: string;
+    score: number;
+}
 
 export class SubmitWordCommandSystem extends System {
     private logger = createScopedLogger('SubmitWordCommandSystem');
-    requiredComponents: ComponentType[] = [SubmitWordCommandComponent];
 
-    update(deltaTime: number, entities: number[], ecManager: ECManager, eventSystem: TypedEventEmitter): void {
-        entities.forEach(entityId => {
+    requiredComponents: ComponentType[] = [NormalRankComponent, SubmitWordCommandComponent];
+
+    update(_deltaTime: number, playerEntities: number[], ecManager: ECManager, eventSystem: TypedEventEmitter): void {
+        this.logger.context('update').info('Processing submit word commands', {playerEntities});
+        playerEntities.forEach(playerEntity => {
             const gameEntity = ecManager.queryEntities()
-                .withComponent(GameIdentityComponent)
-                .withChild(entityId)
-                .execute()[0];
+                .withChild(playerEntity)
+                .withComponent(IdentityComponent)
+                .getOne();
             const gridComponent = ecManager.getComponent(gameEntity, GridComponent);
-            const submitWordCommand = ecManager.getComponent(entityId, SubmitWordCommandComponent);
+            const submitWordCommand = ecManager.getComponent(playerEntity, SubmitWordCommandComponent);
             const pathLetterTiles = this.getPathLetterTiles(submitWordCommand.wordPath, gridComponent.grid);
             const score = this.defaultWordScoreCalculator(pathLetterTiles);
 
             // Update the player's score
-            const playerScoreComponent = ecManager.getComponent(entityId, ScoreComponent);
+            const playerScoreComponent = ecManager.getComponent(playerEntity, ScoreComponent);
             playerScoreComponent.score += score;
+            ecManager.removeComponent(playerEntity, SubmitWordCommandComponent);
 
-            ecManager.removeComponent(entityId, SubmitWordCommandComponent); // Cleanup
+            // Emit the player's score update
+            const gameIdentityComponent = ecManager.getComponent(gameEntity, IdentityComponent);
+            const playerIdentityComponent = ecManager.getComponent(playerEntity, IdentityComponent);
+            this.logger.context('update').debug('Emitting player score update', {playerEntity, score, gameIdentity: gameIdentityComponent.identity});
+            eventSystem.emitTargeted<PlayerScoreUpdateEvent>('playerScoreUpdate', gameIdentityComponent.identity, {
+                playerName: playerIdentityComponent.identity,
+                score: playerScoreComponent.score
+            })
+
+            this.logger.context('update').info('Player score updated', {playerEntity, score});
         });
     }
 

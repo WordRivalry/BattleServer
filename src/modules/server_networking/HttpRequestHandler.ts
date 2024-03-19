@@ -1,5 +1,5 @@
 // HttpRequestHandler.ts
-import {PlayerMetadata} from "../game/Arena";
+import {PlayerMetadata} from "../oldButNew/GameSessionManager";
 import {GameMode, ModeType} from "./validation/messageType";
 import {GameSessionManager} from "../oldButNew/GameSessionManager";
 
