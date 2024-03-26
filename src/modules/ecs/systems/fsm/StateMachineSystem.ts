@@ -6,6 +6,7 @@ import {ECManager} from "../../ECManager";
 
 export class StateMachineSystem extends System {
     requiredComponents: any[] = [StateMachineComponent];
+
     update(deltaTime: number, entities: number[], ecManager: ECManager, eventSystem: TypedEventEmitter): void {
         entities.forEach(entity => {
             const stateMachineComponent = ecManager.getComponent(entity, StateMachineComponent);

@@ -3,13 +3,13 @@ import {ConnectionManager} from './modules/server_networking/ConnectionManager';
 import {WebSocketMessageHandler as WebSocketMessageHandler} from './modules/server_networking/WebSocketMessageHandler';
 import {HttpRequestHandler} from "./modules/server_networking/HttpRequestHandler";
 import {TypedEventEmitter} from "./modules/ecs/TypedEventEmitter";
-import {GameSessionManager} from "./modules/oldButNew/GameSessionManager";
-import {Arena} from "./modules/oldButNew/Arena";
+import {GameSessionManager} from "./modules/framework/GameSessionManager";
+import {Arena} from "./modules/framework/Arena";
 
 // Instantiate the TypedEventEmitter
 const eventEmitter = new TypedEventEmitter();
 
-// Instantiate the GameEngine
+// Instantiate the ecs framework
 const arena = new Arena(eventEmitter);
 
 // Instantiate the GameSessionManager

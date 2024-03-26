@@ -4,6 +4,7 @@ import {createScopedLogger} from "../../../logger/logger";
 
 export class IdentityComponent extends Component {
     private logger = createScopedLogger('PlayerIdentityComponent')
+
     constructor(
         public identity: string
     ) {

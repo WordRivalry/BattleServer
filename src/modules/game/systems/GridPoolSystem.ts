@@ -1,23 +1,50 @@
 // GridPoolSystem.ts
 import {System} from "../../ecs/systems/System";
-import {GridPoolComponent} from "../components/game/GridPoolComponent";
+import {GridPoolComponent} from "../components/grid/GridPoolComponent";
 import {TypedEventEmitter} from "../../ecs/TypedEventEmitter";
-import {GridComponent} from "../components/game/GridComponent";
-import LetterComponent from "../components/game/LetterComponent";
+import {GridComponent, GridStats} from "../components/grid/GridComponent";
+import LetterComponent from "../components/grid/LetterComponent";
 import {GlobalComponent} from "../../ecs/components/GlobalComponent";
 import {createScopedLogger} from "../../logger/logger";
 import {MessageParsingService} from "../../server_networking/MessageParsingService";
 import {ECManager} from "../../ecs/ECManager";
 import config from "../../../../config";
 import axios from "axios";
-import {ArenaEvent} from "../../oldButNew/Arena";
+import {ArenaEvent} from "../../framework/Arena";
 
 export class GridPoolSystem extends System {
     requiredComponents = [GridPoolComponent];
     private logger = createScopedLogger('GridPoolSystem');
+    private frenchLetterDistribution = [
+        {letter: 'E', frequency: 14.715, score: 1},
+        {letter: 'A', frequency: 7.636, score: 1},
+        {letter: 'I', frequency: 7.529, score: 1},
+        {letter: 'S', frequency: 7.948, score: 2},
+        {letter: 'N', frequency: 7.095, score: 1},
+        {letter: 'R', frequency: 6.553, score: 1},
+        {letter: 'T', frequency: 7.244, score: 1},
+        {letter: 'U', frequency: 6.311, score: 1},
+        {letter: 'L', frequency: 5.456, score: 1},
+        {letter: 'O', frequency: 5.378, score: 1},
+        {letter: 'D', frequency: 3.669, score: 2},
+        {letter: 'C', frequency: 3.260, score: 2},
+        {letter: 'P', frequency: 3.021, score: 2},
+        {letter: 'M', frequency: 2.968, score: 2},
+        {letter: 'V', frequency: 1.838, score: 3},
+        {letter: 'Q', frequency: 1.362, score: 4},
+        {letter: 'F', frequency: 1.066, score: 3},
+        {letter: 'B', frequency: 0.901, score: 3},
+        {letter: 'G', frequency: 0.866, score: 3},
+        {letter: 'H', frequency: 0.737, score: 4},
+        {letter: 'J', frequency: 0.545, score: 5},
+        {letter: 'X', frequency: 0.387, score: 6},
+        {letter: 'Y', frequency: 0.308, score: 6},
+        {letter: 'Z', frequency: 0.136, score: 7},
+        {letter: 'K', frequency: 0.049, score: 8},
+        {letter: 'W', frequency: 0.114, score: 9}
+    ];
 
     public init(ecManager: ECManager, eventSystem: TypedEventEmitter): void {
-
         // Get the global entity
         const globalEntity = ecManager
             .queryEntities()
@@ -28,14 +55,40 @@ export class GridPoolSystem extends System {
         const gridPoolComponent = new GridPoolComponent();
         ecManager.addComponent(globalEntity, GridPoolComponent, gridPoolComponent);
 
-        // Preload the pool
-        this.loadPool(gridPoolComponent, 50)
+        // Initialize retry parameters
+        const maxRetries = 5;
+        const initialDelay = 1000; // 1 second
+
+        // Preload the pool with retry mechanism
+        this.retryLoadPool(gridPoolComponent, 50, maxRetries, initialDelay)
             .then(() => {
-                eventSystem.emitGeneric(ArenaEvent.GRID_POOL_REFILLED, undefined)
+                eventSystem.emitGeneric(ArenaEvent.GRID_POOL_REFILLED, undefined);
             })
             .catch((error) => {
-                this.logger.error("Failed to preload grid pool:", error);
+                this.logger.error("Failed to preload grid pool after retries:", error);
             });
+    }
+
+    private async retryLoadPool(gridPoolComponent: GridPoolComponent, count: number, retriesLeft: number, delay: number): Promise<void> {
+        try {
+            await this.loadPool(gridPoolComponent, count);
+            return await Promise.resolve();
+        } catch (error) {
+            // If no retries left, reject
+            if (retriesLeft <= 0) {
+                return Promise.reject(error);
+            }
+
+            // Log the retry attempt
+            console.log(`Retry loading pool in ${delay}ms...`);
+            return await new Promise((resolve, reject) => {
+                setTimeout(() => {
+                    this.retryLoadPool(gridPoolComponent, count, retriesLeft - 1, delay * 2) // Exponential backoff
+                        .then(resolve)
+                        .catch(reject);
+                }, delay);
+            });
+        }
     }
 
     public update(_deltaTime: number, entities: number[], ecManager: ECManager, eventSystem: TypedEventEmitter): void {
@@ -65,7 +118,6 @@ export class GridPoolSystem extends System {
         }
 
 
-
         try {
             const responses = await Promise.all(promises);
 
@@ -77,11 +129,13 @@ export class GridPoolSystem extends System {
                         row.map((letter: string): LetterComponent => ({
                             letter: letter.toUpperCase(),
                             value: this.getLetterScore(letter.toUpperCase()), // You need to implement this method based on your scoring system
-                            multiplierLetter: this.determineMultiplier(true),
-                            multiplierWord: this.determineMultiplier(false),
+                            letterMultiplier: this.determineMultiplier(true),
+                            wordMultiplier: this.determineMultiplier(false),
                         }))
-                    )
-            )));
+                    ),
+                    response.data.valid_words,
+                    response.data.stats
+                )));
 
         } catch (error) {
             console.error("Failed to preload grids:", error);
@@ -99,13 +153,13 @@ export class GridPoolSystem extends System {
             const api_url = config.gridApiUrl;
             // Fetch the grid from the API
             return axios.get(api_url + '/get_grid', {
-                    params: {
-                        min_diversity: minDiversity,
-                        max_diversity: maxDiversity,
-                        min_difficulty: minDifficulty,
-                        max_difficulty: maxDifficulty,
-                    }
-                })
+                params: {
+                    min_diversity: minDiversity,
+                    max_diversity: maxDiversity,
+                    min_difficulty: minDifficulty,
+                    max_difficulty: maxDifficulty,
+                }
+            })
         } catch (error) {
             console.error("Failed to fetch grid:", error);
             throw new Error("Failed to fetch grid from the API");
@@ -125,33 +179,4 @@ export class GridPoolSystem extends System {
         const letterData = this.frenchLetterDistribution.find((data) => data.letter === letter);
         return letterData ? letterData.score : 0;
     }
-
-    private frenchLetterDistribution = [
-        { letter: 'E', frequency: 14.715, score: 1 },
-        { letter: 'A', frequency: 7.636, score: 1 },
-        { letter: 'I', frequency: 7.529, score: 1 },
-        { letter: 'S', frequency: 7.948, score: 2 },
-        { letter: 'N', frequency: 7.095, score: 1 },
-        { letter: 'R', frequency: 6.553, score: 1 },
-        { letter: 'T', frequency: 7.244, score: 1 },
-        { letter: 'U', frequency: 6.311, score: 1 },
-        { letter: 'L', frequency: 5.456, score: 1 },
-        { letter: 'O', frequency: 5.378, score: 1 },
-        { letter: 'D', frequency: 3.669, score: 2 },
-        { letter: 'C', frequency: 3.260, score: 2 },
-        { letter: 'P', frequency: 3.021, score: 2 },
-        { letter: 'M', frequency: 2.968, score: 2 },
-        { letter: 'V', frequency: 1.838, score: 3 },
-        { letter: 'Q', frequency: 1.362, score: 4 },
-        { letter: 'F', frequency: 1.066, score: 3 },
-        { letter: 'B', frequency: 0.901, score: 3 },
-        { letter: 'G', frequency: 0.866, score: 3 },
-        { letter: 'H', frequency: 0.737, score: 4 },
-        { letter: 'J', frequency: 0.545, score: 5 },
-        { letter: 'X', frequency: 0.387, score: 6 },
-        { letter: 'Y', frequency: 0.308, score: 6 },
-        { letter: 'Z', frequency: 0.136, score: 7 },
-        { letter: 'K', frequency: 0.049, score: 8 },
-        { letter: 'W', frequency: 0.114, score: 9 }
-    ];
 }

@@ -1,11 +1,11 @@
-import {ISystem} from "../System";
+import {System} from "../System";
 import {ECManager} from "../../ECManager";
 import {TypedEventEmitter} from "../../TypedEventEmitter";
 import {ComponentType} from "../../components/ComponentManager";
 import {ReplicationComponent} from "../../components/network/ReplicationComponent";
 import {Component} from "../../components/Component";
 
-export class ReplicationSystem implements ISystem {
+export class ReplicationSystem extends System {
     requiredComponents: ComponentType[] = [ReplicationComponent];
 
     init(ecsManager: ECManager, eventSystem: TypedEventEmitter): void {

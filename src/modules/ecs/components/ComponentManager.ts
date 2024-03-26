@@ -1,8 +1,8 @@
 // ComponentManager.ts
 
-import { IQuery } from "./queries/IQuery";
-import { ComponentStore } from "./ComponentStore";
-import { Component } from "./Component";
+import {IQuery} from "./queries/IQuery";
+import {ComponentStore} from "./ComponentStore";
+import {Component} from "./Component";
 import {createScopedLogger} from "../../logger/logger";
 
 export type ComponentType<T extends Component = Component> = new (...args: any[]) => T;

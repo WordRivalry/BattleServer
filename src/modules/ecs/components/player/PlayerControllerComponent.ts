@@ -2,6 +2,6 @@
 import {Component} from "../Component";
 import {CommandType} from "../../commands/Command";
 
-export class PlayerControllerComponent extends Component{
+export class PlayerControllerComponent extends Component {
     public inputToCommandMapping: Map<string, CommandType> = new Map();
 }

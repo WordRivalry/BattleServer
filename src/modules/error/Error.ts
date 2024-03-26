@@ -1,6 +1,6 @@
 import Joi from "joi";
 import {createScopedLogger} from "../logger/logger";
-import { WebSocket } from 'ws';
+import {WebSocket} from 'ws';
 
 export class ErrorHandlingService {
 
@@ -8,15 +8,23 @@ export class ErrorHandlingService {
 
     static sendError(ws: WebSocket, error: any) {
         if (error instanceof Error) {
-            ws.close(1008, JSON.stringify({ type: 'error', code: 1008, message: error.message }));
+            ErrorHandlingService.logger.context(error.name).error(ErrorHandlingService.toLogMessage(error));
+            ws.close(1008, JSON.stringify({type: 'error', code: 1008, message: error.message}));
         } else if (error instanceof CustomError) {
-            const message = error.toWebSocketMessage();
-            ErrorHandlingService.logger.context(error.name).error(message, { error });
-            ws.close(1008, message);
+            ErrorHandlingService.logger.context(error.name).error(error.toLogMessage());
+            ws.close(1008,  error.toWebSocketMessage());
             return;
         } else {
-            ws.close(1008, JSON.stringify({ type: 'error', code: 1008, message: 'Unknown error' }));
+            ws.close(1008, JSON.stringify({type: 'error', code: 1008, message: 'Unknown error'}));
         }
+    }
+
+    static toLogMessage(error: Error) {
+        return "\n\n********************* Error Message Log *********************" +
+            "\nType:" + error.name +
+            "\nMessage: " + error.message +
+            "\nCause: " + error.cause +
+            "\nStack: " + error.stack;
     }
 }
 
@@ -31,6 +39,21 @@ export class CustomError extends Error {
         this.name = this.constructor.name;
         this.cause = cause;
         Error.captureStackTrace(this, this.constructor);
+        console.log(this.stack)
+    }
+
+    protected get errorType() {
+        return 'Custom Error';
+    }
+
+    public toLogMessage() {
+        return "Error Message Log" +
+            "Type: " + this.errorType +
+            "Name: " + this.name +
+            "StatusCode: " + this.statusCode +
+            "Message: " + this.message +
+            "Cause: " + this.cause +
+            "Stack: " + this.stack;
     }
 
     public toWebSocketMessage() {
@@ -44,10 +67,6 @@ export class CustomError extends Error {
             message: this.message,
             cause: this.cause
         };
-    }
-
-    protected get errorType() {
-        return 'Custom Error';
     }
 }
 

@@ -57,10 +57,12 @@ export interface PlayerActionPayload {
 export interface PublishWordData {
     wordPath: Path;
 }
+
 export interface PublishWordAction {
     playerAction: PlayerActionType.PUBLISH_WORD;
     data: PublishWordData;
 }
+
 export interface PlayerAction_PublishWord {
     type: ActionType.PLAYER_ACTION;
     payload: PublishWordAction;

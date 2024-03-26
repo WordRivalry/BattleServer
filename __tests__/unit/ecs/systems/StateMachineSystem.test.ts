@@ -24,6 +24,8 @@ abstract class MockState extends State {
 class InitialState extends MockState {}
 class NextState extends MockState {}
 class AnotherState extends MockState {}
+class YetAnotherState extends MockState {}
+class FinalState extends MockState {}
 
 const conditionTrue = jest.fn().mockReturnValue(true);
 const conditionFalse = jest.fn().mockReturnValue(false);
@@ -33,6 +35,8 @@ describe('StateMachineComponent Transitions', () => {
     let initialState: InitialState;
     let nextState: NextState;
     let anotherState: AnotherState;
+    let yetAnotherState: YetAnotherState;
+    let finalState: FinalState;
     let ecManager: ECManager;
     let entity: number;
 
@@ -40,23 +44,12 @@ describe('StateMachineComponent Transitions', () => {
         initialState = new InitialState('Initial');
         nextState = new NextState('Next');
         anotherState = new AnotherState('Another');
+        yetAnotherState = new YetAnotherState('YetAnother');
+        finalState = new FinalState('Final');
         stateMachine = new StateMachineComponent(InitialState, initialState);
         ecManager = new ECManager(new EntityManager(), new ComponentManager());
         entity = ecManager.createEntity();
         ecManager.addComponent(entity, StateMachineComponent, stateMachine);
-    });
-
-
-    test('enter() is called for first state', () => {
-        stateMachine.addTransition(InitialState, NextState, nextState, conditionFalse);
-
-        // Simulate update cycle where transition condition is met
-        const stateMachineSystem = new StateMachineSystem();
-        const eventSystem = new TypedEventEmitter();
-        stateMachineSystem.update(0, [entity], ecManager, eventSystem);
-
-        expect(initialState.enter).toHaveBeenCalled();
-        expect(stateMachine.currentState).toBe(initialState);
     });
 
     test('transitions to the next state on condition', () => {
@@ -95,25 +88,48 @@ describe('StateMachineComponent Transitions', () => {
         expect(initialState.update).toHaveBeenCalledWith(0, entity, ecManager, eventSystem);
     });
 
-    // test('evaluates multiple transitions, executing only the first valid one', () => {
-    //     stateMachine.addTransition(InitialState, NextState, nextState, conditionFalse); // This condition will not be met
-    //     stateMachine.addTransition(NextState, AnotherState, anotherState, conditionTrue); // This condition will be met
-    //
-    //     const stateMachineSystem = new StateMachineSystem();
-    //     const eventSystem = new TypedEventEmitter();
-    //     stateMachineSystem.update(0, [entity], ecManager, eventSystem);
-    //
-    //     expect(nextState.enter).not.toHaveBeenCalled();
-    //     expect(initialState.exit).not.toHaveBeenCalled();
-    //     expect(anotherState.enter).toHaveBeenCalledWith(entity, ecManager, eventSystem);
-    //     expect(stateMachine.currentState).toBe(anotherState);
-    // });
+    test('evaluates multiple transitions, executing only the first valid one', () => {
+        stateMachine.addTransition(InitialState, NextState, nextState, conditionFalse);
+        stateMachine.addTransition(InitialState, AnotherState, anotherState, conditionFalse);
+        stateMachine.addTransition(InitialState, YetAnotherState, yetAnotherState, conditionTrue);
+
+        const stateMachineSystem = new StateMachineSystem();
+        const eventSystem = new TypedEventEmitter();
+        stateMachineSystem.update(0, [entity], ecManager, eventSystem);
+
+        expect(nextState.enter).not.toHaveBeenCalled();
+        expect(initialState.exit).toHaveBeenCalled();
+        expect(yetAnotherState.enter).toHaveBeenCalledWith(entity, ecManager, eventSystem);
+        expect(stateMachine.currentState).toBe(yetAnotherState);
+    });
+
+    test('directTransition() work if target is already next state', () => {
+        stateMachine.addTransition(InitialState, NextState, nextState, conditionFalse);
+        stateMachine.addTransition(NextState, AnotherState, anotherState, conditionFalse);
+        stateMachine.addTransition(AnotherState, YetAnotherState, yetAnotherState, conditionFalse);
+        stateMachine.addTransition(YetAnotherState, FinalState, finalState, conditionFalse);
+
+        stateMachine.directTransition(NextState);
+
+        const stateMachineSystem = new StateMachineSystem();
+        const eventSystem = new TypedEventEmitter();
+        stateMachineSystem.update(0, [entity], ecManager, eventSystem);
+
+        expect(initialState.exit).toHaveBeenCalled();
+        expect(nextState.enter).toHaveBeenCalled();
+        expect(anotherState.enter).not.toHaveBeenCalled();
+        expect(yetAnotherState.enter).not.toHaveBeenCalled();
+        expect(finalState.enter).not.toHaveBeenCalledWith(entity, ecManager, eventSystem);
+        expect(stateMachine.currentState).toBe(nextState);
+    });
 
     test('directTransition() links the current state to the target state, and perform transition on update', () => {
-        stateMachine.addTransition(InitialState, NextState, nextState, conditionFalse); // Condition that prevents transition
-        stateMachine.addTransition(NextState, AnotherState, anotherState, conditionTrue); // Condition that allows transition
+        stateMachine.addTransition(InitialState, NextState, nextState, conditionFalse);
+        stateMachine.addTransition(NextState, AnotherState, anotherState, conditionFalse);
+        stateMachine.addTransition(AnotherState, YetAnotherState, yetAnotherState, conditionFalse);
+        stateMachine.addTransition(YetAnotherState, FinalState, finalState, conditionFalse);
 
-        stateMachine.directTransition(AnotherState);
+        stateMachine.directTransition(FinalState);
 
         const stateMachineSystem = new StateMachineSystem();
         const eventSystem = new TypedEventEmitter();
@@ -121,9 +137,10 @@ describe('StateMachineComponent Transitions', () => {
 
         expect(initialState.exit).toHaveBeenCalled();
         expect(nextState.enter).not.toHaveBeenCalled();
-        expect(nextState.exit).not.toHaveBeenCalled();
-        expect(anotherState.enter).toHaveBeenCalledWith(entity, ecManager, eventSystem);
-        expect(stateMachine.currentState).toBe(anotherState);
+        expect(anotherState.enter).not.toHaveBeenCalled();
+        expect(yetAnotherState.enter).not.toHaveBeenCalled();
+        expect(finalState.enter).toHaveBeenCalledWith(entity, ecManager, eventSystem);
+        expect(stateMachine.currentState).toBe(finalState);
     });
 
     test('does nothing when no transitions are defined for the current state', () => {

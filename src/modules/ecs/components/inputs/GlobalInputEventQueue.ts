@@ -1,5 +1,5 @@
 // GlobalInputEventQueue.ta
-import { Input } from './Input';
+import {Input} from './Input';
 
 export class GlobalInputEventQueue {
     private static queue: Input[] = [];

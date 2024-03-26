@@ -1,6 +1,6 @@
 // IQuery.ts
-import { ComponentType } from "../ComponentManager";
-import { Component } from "../Component";
+import {ComponentType} from "../ComponentManager";
+import {Component} from "../Component";
 
 export interface IPropertyCondition<T extends Component> {
     componentType: ComponentType<T>;

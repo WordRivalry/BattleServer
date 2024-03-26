@@ -6,7 +6,7 @@ import {ConnectionRequestComponent} from "../../components/network/ConnectionReq
 import {PlayerConnectionComponent} from "../../components/player/PlayerConnectionComponent";
 import {ReconnectionRequestComponent} from "../../components/network/ReconnectionRequestComponent";
 
-export class ConnectionRequestSystem  extends System {
+export class ConnectionRequestSystem extends System {
 
     requiredComponents: ComponentType[] = [PlayerConnectionComponent, ConnectionRequestComponent]
 
@@ -24,7 +24,7 @@ export class ConnectionRequestSystem  extends System {
             this.setConnection(playerConnection, connectionRequest);
         } else {
             this.setConnection(playerConnection, connectionRequest);
-            ecManager.addComponent(entity, ReconnectionRequestComponent,  new ReconnectionRequestComponent());
+            ecManager.addComponent(entity, ReconnectionRequestComponent, new ReconnectionRequestComponent());
         }
 
         // Clear the connection request component

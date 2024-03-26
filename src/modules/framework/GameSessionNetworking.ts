@@ -1,10 +1,11 @@
+// GameSessionNetworking.ts
 import WebSocket from 'ws';
 import {v4 as uuidv4} from 'uuid';
 import {PlayerAction} from "../server_networking/validation/messageType";
 import {Player} from "./Player";
 import {PlayerMetadata} from "./GameSessionManager";
 import {NoConnectionTimeoutError, PlayerNotInSessionError} from "../error/Error";
-import {GameEvent} from "./GameEvent";
+import {NetworkEventEnum} from "./NetworkEventEnum";
 import {TypedEventEmitter} from "../ecs/TypedEventEmitter";
 import {
     ConnectionPayload,
@@ -23,21 +24,18 @@ interface GameMessage {
 }
 
 export interface GameSessionNetworking_Delegate {
-    onAPlayerJoined(player: string): void;
-
-    onAllPlayersJoined(): void;
-
+    onPlayerJoined(playerName: string): void;
     onAction(fromPlayer: string, action: PlayerAction): void;
-
-    onPlayerLeft(player: string): void;
+    onPlayerLeft(playerName: string): void;
 }
 
 export class GameSessionNetworking {
-    public readonly players: Player[] = [];
-    private readonly reconnectionTimeouts: Map<string, NodeJS.Timeout> = new Map();
+    private readonly players: Player[] = [];
     private readonly messages: GameMessage[] = [];
-    private delegate: GameSessionNetworking_Delegate | undefined;
+    private readonly cancelSubscriptions: (() => void)[] = [];
+    private readonly reconnectionTimeouts: Map<string, NodeJS.Timeout> = new Map();
     private readonly logger = createScopedLogger('GameSessionNetworking');
+    private delegate: GameSessionNetworking_Delegate | undefined;
 
     constructor(
         private gameSessionUUID: string,
@@ -53,13 +51,30 @@ export class GameSessionNetworking {
         this.gameEventsRegister();
     }
 
-    public setDelegate(delegate: GameSessionNetworking_Delegate): void {
-        this.delegate = delegate;
+    //////////////////////////////////////////////////
+    //                Networking API                //
+    //////////////////////////////////////////////////
+
+    public cleanup(): void {
+        // Unsubscribe from the events
+        this.cancelSubscriptions.forEach(cancel => cancel());
+
+        // Disconnect all players
+        this.disconnectAllPlayers();
+
+        // Clear the state
+        this.delegate = undefined;
+        this.players.length = 0;
+        this.messages.length = 0;
+        this.cancelSubscriptions.length = 0;
+        this.reconnectionTimeouts.clear();
+
+        // Ready for garbage collection
+        this.logger.context('cleanup').info('Cleaned up');
     }
 
-    public emitGameEnd(): void {
-        this.eventEmitter.emitTargeted(GameEvent.GAME_END, this.gameSessionUUID, {});
-        this.disconnectAllPlayers();
+    public setDelegate(delegate: GameSessionNetworking_Delegate): void {
+        this.delegate = delegate;
     }
 
     public isAllPlayersConnected(): boolean {
@@ -100,6 +115,10 @@ export class GameSessionNetworking {
         }
     }
 
+    //////////////////////////////////////////////////
+    //                Private methods               //
+    //////////////////////////////////////////////////
+
     private disconnectAllPlayers() {
         this.players.forEach(player => {
             player.disconnect();
@@ -108,21 +127,21 @@ export class GameSessionNetworking {
     }
 
     private gameEventsRegister(): void {
-        this.eventEmitter.subscribeTargeted<ConnectionPayload>(GameEvent.PLAYER_JOINED, this.gameSessionUUID, (payload) => {
+        this.cancelSubscriptions.push(this.eventEmitter.subscribeTargeted<ConnectionPayload>(NetworkEventEnum.PLAYER_JOINED, this.gameSessionUUID, (payload) => {
             this.handlePlayerJoined(payload.playerName, payload.socket);
-        });
+        }));
 
-        this.eventEmitter.subscribeTargeted<PlayerActionPayload>(GameEvent.PLAYER_ACTION, this.gameSessionUUID, (payload) => {
+        this.cancelSubscriptions.push(this.eventEmitter.subscribeTargeted<PlayerActionPayload>(NetworkEventEnum.PLAYER_ACTION, this.gameSessionUUID, (payload) => {
             this.handlePlayerAction(payload.playerName, payload.action);
-        });
+        }));
 
-        this.eventEmitter.subscribeTargeted<PlayerDisconnectionPayload>(GameEvent.PLAYER_LOST_CONNECTION, this.gameSessionUUID, (payload) => {
+        this.cancelSubscriptions.push(this.eventEmitter.subscribeTargeted<PlayerDisconnectionPayload>(NetworkEventEnum.PLAYER_LOST_CONNECTION, this.gameSessionUUID, (payload) => {
             this.handleDisconnection(payload.playerName);
-        });
+        }));
 
-        this.eventEmitter.subscribeTargeted<PlayerDisconnectionPayload>(GameEvent.PLAYER_LEFT, this.gameSessionUUID, (payload) => {
+        this.cancelSubscriptions.push(this.eventEmitter.subscribeTargeted<PlayerDisconnectionPayload>(NetworkEventEnum.PLAYER_LEFT, this.gameSessionUUID, (payload) => {
             this.handlePlayerLeft(payload.playerName);
-        });
+        }));
     }
 
     private handlePlayerJoined(playerName: string, ws: WebSocket) {
@@ -138,8 +157,7 @@ export class GameSessionNetworking {
             this.logger.context('handlePlayerJoined').info('Player reconnected', {playerName: player.getName()});
         }
 
-        this.delegate?.onAPlayerJoined(player.getName());
-        this.checkAndStartGame();
+        this.delegate?.onPlayerJoined(player.getName());
     }
 
     private clearReconnectionTimeout(playerName: string) {
@@ -150,15 +168,6 @@ export class GameSessionNetworking {
         clearTimeout(timeout);
         this.reconnectionTimeouts.delete(playerName);
         this.logger.context('clearReconnectionTimeout').info('Cleared reconnection timeout', {playerName});
-    }
-
-    private checkAndStartGame(): void {
-        if (this.isAllPlayersConnected()) {
-            this.delegate?.onAllPlayersJoined();
-            this.logger.context('checkAndStartGame').info('All players joined');
-        } else {
-            this.logger.context('checkAndStartGame').info('Not all players joined');
-        }
     }
 
     private handlePlayerAction(playerName: string, action: PlayerAction) {

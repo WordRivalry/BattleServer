@@ -1,11 +1,17 @@
 // src/validation/validationSchema.ts
 import Joi from 'joi';
 import {
-    ActionType, Grid_fetch_data,
+    ActionType,
+    Grid_fetch_data,
     JoinGameSessionAction,
-    PlayerAction, PlayerAction_PublishWord, PlayerAction_SendChatMessage,
+    PlayerAction,
+    PlayerAction_PublishWord,
+    PlayerAction_SendChatMessage,
     PlayerActionType,
-    PublishWordAction, PublishWordData, SendChatMessageAction, SendChatMessageData,
+    PublishWordAction,
+    PublishWordData,
+    SendChatMessageAction,
+    SendChatMessageData,
     WebSocketAction
 } from "./messageType";
 

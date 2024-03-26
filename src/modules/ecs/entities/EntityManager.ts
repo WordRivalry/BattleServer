@@ -32,7 +32,7 @@ export class EntityManager {
 
     getAllEntities(): number[] {
         // Return a list of active entities
-        return Array.from({ length: this.nextEntityId }, (_, i) => i).filter(this.isActive.bind(this));
+        return Array.from({length: this.nextEntityId}, (_, i) => i).filter(this.isActive.bind(this));
     }
 
     destroyEntity(entityId: number): void {
@@ -45,18 +45,6 @@ export class EntityManager {
                 this.entityParent[i] = EntityManager.NO_PARENT;
             }
         }
-    }
-
-    // Helper method to find the insertion index in a sorted array
-    private sortedIndex(array: number[], value: number): number {
-        let low = 0, high = array.length;
-
-        while (low < high) {
-            let mid = (low + high) >>> 1;
-            if (array[mid] < value) low = mid + 1;
-            else high = mid;
-        }
-        return low;
     }
 
     isActive(entityId: number): boolean {
@@ -124,10 +112,10 @@ export class EntityManager {
     }
 
     queryEntities({
-        includeTags = [],
-        excludeTags = [],
-        parent = EntityManager.NO_PARENT
-    }: {
+                      includeTags = [],
+                      excludeTags = [],
+                      parent = EntityManager.NO_PARENT
+                  }: {
         includeTags?: number[],
         excludeTags?: number[],
         parent?: number
@@ -147,5 +135,17 @@ export class EntityManager {
             }
         }
         return matchingEntities;
+    }
+
+    // Helper method to find the insertion index in a sorted array
+    private sortedIndex(array: number[], value: number): number {
+        let low = 0, high = array.length;
+
+        while (low < high) {
+            let mid = (low + high) >>> 1;
+            if (array[mid] < value) low = mid + 1;
+            else high = mid;
+        }
+        return low;
     }
 }

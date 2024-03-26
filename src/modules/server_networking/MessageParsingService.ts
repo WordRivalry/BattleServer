@@ -1,33 +1,34 @@
 // MessageParsingService.ts
-import { RawData } from 'ws';
+import {RawData} from 'ws';
 import {
     InvalidActionFormatError,
     InvalidJoinGameSessionActionError,
     InvalidJsonError,
     InvalidLeaveGameSessionActionError,
-    InvalidPlayerAction_PublishWordError, InvalidPlayerAction_SendChatMessageError,
+    InvalidPlayerAction_PublishWordError,
+    InvalidPlayerAction_SendChatMessageError,
     InvalidPlayerActionError,
     ValidationFailedError
 } from "../error/Error";
 import {
+    ActionType,
+    Grid_fetch_data,
     JoinGameSessionAction,
     LeaveGameSessionAction,
     PlayerAction,
-    WebSocketAction,
-    ActionType,
     PlayerAction_PublishWord,
     PlayerAction_SendChatMessage,
     PlayerActionType,
-    Grid_fetch_data
+    WebSocketAction
 } from './validation/messageType';
 import {
     actionFormatSchema,
+    grid_fetch_data,
     joinGameSessionActionSchema,
     leaveGameSessionActionSchema,
-    playerActionSchema,
     playerAction_PublishWord,
     playerAction_SendChatMessage,
-    grid_fetch_data
+    playerActionSchema
 } from './validation/validationSchema';
 import {createScopedLogger} from "../logger/logger";
 
@@ -36,7 +37,7 @@ export class MessageParsingService {
     private static logger = createScopedLogger('MessageParsingService');
 
     public static parseAndValidationHttpResponse(data: any): Grid_fetch_data {
-        const validation = grid_fetch_data.validate(data, { allowUnknown: false });
+        const validation = grid_fetch_data.validate(data, {allowUnknown: false});
         if (validation.error) {
             throw new InvalidActionFormatError(validation.error);
         }
@@ -47,7 +48,7 @@ export class MessageParsingService {
     public static parseAndValidateMessage(message: RawData): JoinGameSessionAction | LeaveGameSessionAction | PlayerAction {
         const json = this.messageToJSON(message);
 
-        const actionFormatValidation = actionFormatSchema.validate(json, { allowUnknown: false });
+        const actionFormatValidation = actionFormatSchema.validate(json, {allowUnknown: false});
         if (actionFormatValidation.error) {
             throw new InvalidActionFormatError(actionFormatValidation.error);
         }
@@ -65,7 +66,7 @@ export class MessageParsingService {
         }
     }
 
-    private static validateAction(action: WebSocketAction): JoinGameSessionAction | LeaveGameSessionAction | PlayerAction  {
+    private static validateAction(action: WebSocketAction): JoinGameSessionAction | LeaveGameSessionAction | PlayerAction {
         switch (action.type) {
             case ActionType.JOIN_GAME_SESSION:
                 return this.validateJoinGameSessionAction(action);
@@ -80,7 +81,7 @@ export class MessageParsingService {
     }
 
     private static validateJoinGameSessionAction(action: WebSocketAction): JoinGameSessionAction {
-        const validation = joinGameSessionActionSchema.validate(action, { allowUnknown: false });
+        const validation = joinGameSessionActionSchema.validate(action, {allowUnknown: false});
         if (validation.error) {
             MessageParsingService.logger.error('JoinGameSessionAction validation failed');
             throw new InvalidJoinGameSessionActionError(validation.error);
@@ -89,7 +90,7 @@ export class MessageParsingService {
     }
 
     private static validateLeaveGameSessionAction(action: WebSocketAction): LeaveGameSessionAction {
-        const validation = leaveGameSessionActionSchema.validate(action, { allowUnknown: false });
+        const validation = leaveGameSessionActionSchema.validate(action, {allowUnknown: false});
         if (validation.error) {
             MessageParsingService.logger.error('LeaveGameSessionAction validation failed');
             throw new InvalidLeaveGameSessionActionError(validation.error);
@@ -99,7 +100,7 @@ export class MessageParsingService {
 
     private static validatePlayerAction(action: WebSocketAction): PlayerAction_PublishWord | PlayerAction_SendChatMessage {
 
-        const playerAction = playerActionSchema.validate(action, { allowUnknown: false });
+        const playerAction = playerActionSchema.validate(action, {allowUnknown: false});
         if (playerAction.error) {
             MessageParsingService.logger.error('PlayerAction validation failed');
             throw new InvalidPlayerActionError(playerAction.error);

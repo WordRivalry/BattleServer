@@ -2,13 +2,15 @@
 import {Component} from "../Component";
 import {State, StateType} from "./State";
 import {ECManager} from "../../ECManager";
+import {createScopedLogger} from "../../../logger/logger";
 
 export type StateTransitionCondition = (entity: number, ecManager: ECManager) => boolean;
 
 export class StateMachineComponent extends Component {
     public currentState: State;
     public currentStateType: StateType;
-    private transitions: Map<StateType, { nextState: State, nextStateType: StateType, condition: StateTransitionCondition }[]> = new Map();
+    private readonly transitions: Map<StateType, { nextState: State, nextStateType: StateType, condition: StateTransitionCondition }[]> = new Map();
+    private readonly logger = createScopedLogger('StateMachineComponent')
 
     constructor(initialStateType: StateType, initialState?: State) {
         super();
@@ -28,6 +30,23 @@ export class StateMachineComponent extends Component {
     }
 
     public directTransition(targetStateType: StateType) {
+
+        // Check if the target state is the same as the current state
+        if (this.currentStateType === targetStateType) {
+            this.logger.context('directTransition()').error(`Target state is the same as the current state`);
+            return;
+        }
+
+        // Check if target is within the currentStateType transitions
+        if (this.transitions.get(this.currentStateType)?.find(transition => transition.nextStateType === targetStateType)) {
+            this.logger.context('directTransition()').debug(`Target state is already a transition from the current state`);
+            let obj = this.transitions.get(this.currentStateType)?.find(transition => targetStateType === transition.nextStateType);
+
+            // Modify the condition to return true
+            obj!.condition = () => true;
+            return;
+        }
+
         // Clear all transitions from the current state
         this.transitions.set(this.currentStateType, []);
 
@@ -46,7 +65,7 @@ export class StateMachineComponent extends Component {
 
         // Check if we found the target state instance
         if (!targetStateInstance) {
-            console.error("Target state instance not found for direct transition.");
+            this.logger.context('directTransition()').error(`Could not find target state instance for ${targetStateType}`);
             return;
         }
 

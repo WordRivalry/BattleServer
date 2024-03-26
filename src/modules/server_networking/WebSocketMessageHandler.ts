@@ -1,10 +1,10 @@
 // WebSocketMessageHandler.ts
-import {WebSocket, RawData} from 'ws';
+import {RawData, WebSocket} from 'ws';
 import {IMessageHandler} from './WebSocketManager';
-import {UnknownPlayerError, UnknownGameSessionError, ValidationFailedError} from "../error/Error";
+import {UnknownGameSessionError, UnknownPlayerError, ValidationFailedError} from "../error/Error";
 import {MessageParsingService} from "./MessageParsingService";
 import {ActionType, PlayerAction} from "./validation/messageType";
-import {GameEvent} from "../oldButNew/GameEvent";
+import {NetworkEventEnum} from "../framework/NetworkEventEnum";
 import {TypedEventEmitter} from "../ecs/TypedEventEmitter";
 
 export interface ConnectionPayload {
@@ -23,10 +23,11 @@ export interface PlayerDisconnectionPayload {
 
 export class WebSocketMessageHandler implements IMessageHandler {
 
-    constructor(private eventEmitter: TypedEventEmitter) {}
+    constructor(private eventEmitter: TypedEventEmitter) {
+    }
 
     public handleConnection(ws: WebSocket, playerName: string, gameSessionUUID: string): void {
-        this.eventEmitter.emitTargeted<ConnectionPayload>(GameEvent.PLAYER_JOINED, gameSessionUUID, {
+        this.eventEmitter.emitTargeted<ConnectionPayload>(NetworkEventEnum.PLAYER_JOINED, gameSessionUUID, {
             playerName: playerName,
             socket: ws
         });
@@ -37,12 +38,12 @@ export class WebSocketMessageHandler implements IMessageHandler {
 
         switch (parsedMessage.type) {
             case ActionType.PLAYER_LEFT_SESSION:
-                this.eventEmitter.emitTargeted(GameEvent.PLAYER_LEFT, gameSessionUUID, {
+                this.eventEmitter.emitTargeted(NetworkEventEnum.PLAYER_LEFT, gameSessionUUID, {
                     playerName: playerName
                 });
                 break;
             case ActionType.PLAYER_ACTION:
-                this.eventEmitter.emitTargeted<PlayerActionPayload>(GameEvent.PLAYER_ACTION, gameSessionUUID, {
+                this.eventEmitter.emitTargeted<PlayerActionPayload>(NetworkEventEnum.PLAYER_ACTION, gameSessionUUID, {
                     playerName: playerName,
                     action: parsedMessage
                 });
@@ -61,7 +62,7 @@ export class WebSocketMessageHandler implements IMessageHandler {
             throw new UnknownGameSessionError("Game session UUID is undefined");
         }
 
-        this.eventEmitter.emitTargeted<PlayerDisconnectionPayload>(GameEvent.PLAYER_LOST_CONNECTION, gameSessionUUID, {
+        this.eventEmitter.emitTargeted<PlayerDisconnectionPayload>(NetworkEventEnum.PLAYER_LOST_CONNECTION, gameSessionUUID, {
             playerName: playerName
         });
     }

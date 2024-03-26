@@ -1,6 +1,5 @@
 // WebSocketManager.ts
-import {WebSocket, RawData} from 'ws';
-import {WebSocketServer} from 'ws';
+import {RawData, WebSocket, WebSocketServer} from 'ws';
 import {createScopedLogger} from '../logger/logger';
 import {ErrorHandlingService} from "../error/Error";
 import http from 'http';
@@ -8,7 +7,9 @@ import config from "../../../config";
 
 export interface IMessageHandler {
     handleMessage(message: RawData, playerName: string, gameSessionUUID: string): void;
+
     handleConnection(ws: WebSocket, playerName: string, gameSessionUUID: string): void;
+
     handleDisconnect(playerName: string | undefined, gameSessionUUID: string | undefined): void;
 }
 
@@ -71,7 +72,7 @@ export class WebSocketManager {
                 try {
                     this.messageHandler.handleMessage(message, playerName, gameSessionUUID);
                 } catch (error) {
-                   ErrorHandlingService.sendError(ws, error);
+                    ErrorHandlingService.sendError(ws, error);
                 }
             });
 

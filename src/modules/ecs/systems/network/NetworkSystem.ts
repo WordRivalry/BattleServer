@@ -19,6 +19,7 @@ export enum GameEvent {
     PLAYER_LOST_CONNECTION = "PLAYER_LOST_CONNECTION",
     GAME_END = "GAME_END",
 }
+
 //
 // export class NetworkSystem extends System {
 //     private readonly reconnectionTimeouts: Map<string, NodeJS.Timeout> = new Map();

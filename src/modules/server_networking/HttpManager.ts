@@ -2,7 +2,7 @@
 import express from "express";
 import cors from "cors";
 import {createScopedLogger} from "../logger/logger";
-import {PlayerMetadata} from "../oldButNew/GameSessionManager";
+import {PlayerMetadata} from "../framework/GameSessionManager";
 
 export interface IHttpRequestHandler {
     handleRequestAlloc(playersMetadata: PlayerMetadata[], gameMode: string, modeType: string): string;
@@ -30,7 +30,7 @@ export class HttpManager {
             try {
 
                 this.logger.context("handleRequestAlloc").info("Received request:", req.body);
-                if (!req.body.gameMode || !req.body.modeType || !req.body.playersMetadata ) {
+                if (!req.body.gameMode || !req.body.modeType || !req.body.playersMetadata) {
                     res.status(400).send("Bad Request");
                     return;
                 }
@@ -43,8 +43,8 @@ export class HttpManager {
                     gameMode,
                     modeType
                 );
-                
-                res.status(200).send({ gameSessionId: gameSessionId });
+
+                res.status(200).send({gameSessionId: gameSessionId});
             } catch (error) {
                 this.logger
                     .context("handleRequestAlloc")

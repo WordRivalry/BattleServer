@@ -1,15 +1,15 @@
+// GameSessionManager.ts
 import {v4 as uuidv4} from 'uuid';
 import {GameSession} from './GameSession';
 import {createScopedLogger} from '../logger/logger';
-import {NormalRankGameSession} from "./NormalRankGameSession";
+import {NormalRankGameSession} from "../game/normalRankGame/NormalRankGameSession";
 import {BadSessionRequestError} from "../error/Error";
-import {GameEvent} from "./GameEvent";
-import {TypedEventEmitter} from "../ecs/TypedEventEmitter";
-import {GameEngine} from "../ecs/GameEngine";
 import {Arena} from "./Arena";
+import {EngineGameEventEnum} from "./EngineGameEventEnum";
 
 export interface PlayerMetadata {
     playerName: string;
+    playerEloRating: number;
 }
 
 export class GameSessionManager {
@@ -33,9 +33,14 @@ export class GameSessionManager {
         );
 
         // Register event
-        const cancellation = this.arena.eventSystem.subscribeTargeted(GameEvent.GAME_END, sessionUUID, () => {
-            this.sessions.get(sessionUUID)?.listenerCancellation?.();
+        const cancellation = this.arena.eventSystem.subscribeTargeted(EngineGameEventEnum.GAME_END, sessionUUID, () => {
+            const obj = this.sessions.get(sessionUUID);
+            if (obj === undefined) throw new Error(`Game session ${sessionUUID} not found.`);
+            obj.listenerCancellation?.();
+            obj.session.cleanup();
             this.sessions.delete(sessionUUID);
+
+            // Session ready for garbage collection
             this.logger.context('createSession').debug('Game session ended', {sessionUUID});
         });
 

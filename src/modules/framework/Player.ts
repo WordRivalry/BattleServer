@@ -1,10 +1,10 @@
-import {PlayerUUID, Timestamp} from "../../types";
+// Player.ts
 import {WebSocket} from 'ws';
 
 export class Player {
     private readonly name: string;
     private isConnected: boolean;
-    private lastSeen: Timestamp | undefined;
+    private lastSeen: number | undefined;
     private socket: WebSocket | null;
 
     constructor(name: string) {
@@ -43,7 +43,7 @@ export class Player {
         return this.name;
     }
 
-    public getLastSeen(): Timestamp | undefined {
+    public getLastSeen(): number | undefined {
         return this.lastSeen;
     }
 

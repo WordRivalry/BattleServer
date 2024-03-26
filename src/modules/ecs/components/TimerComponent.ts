@@ -1,5 +1,5 @@
 // TimerComponent.ts
-import { Component } from "./Component";
+import {Component} from "./Component";
 
 export class TimerComponent extends Component {
     elapsedTime: number = 0;

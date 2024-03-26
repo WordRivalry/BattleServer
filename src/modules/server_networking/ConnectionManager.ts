@@ -46,13 +46,13 @@ export class ConnectionManager {
     }
 
     shutdown() {
-        this.logger.context("shutdown").info('Shutting down server');
+      //  this.logger.context("shutdown").info('Shutting down server');
         this.wss.clients.forEach((client) => {
             client.close(1001, 'Server is shutting down');
         });
-        this.server.close(() => {
-            this.logger.context("shutdown").info('Server has been shut down');
-        });
+    //    this.server.close(() => {
+    //        this.logger.context("shutdown").info('Server has been shut down');
+    //    });
     }
 
     private setupShutdownHandler(): void {

@@ -2,15 +2,17 @@
 import {State} from "../../ecs/components/StateMachine/State";
 import {ECManager} from "../../ecs/ECManager";
 import {TypedEventEmitter} from "../../ecs/TypedEventEmitter";
-import {GridComponent} from "../components/game/GridComponent";
-import {GameSessionNetworking} from "../../oldButNew/GameSessionNetworking";
+import {GridComponent} from "../components/grid/GridComponent";
 import {createScopedLogger} from "../../logger/logger";
+import {NormalRankGameEvent} from "../normalRankGame/NormalRankGameSession";
 
 export class InfoDispatchState extends State {
 
     private readonly logger = createScopedLogger('InfoDispatchState')
 
-    constructor(private readonly sessionNetworking: GameSessionNetworking) {
+    constructor(
+        private readonly broadcastMessage: (type: string, payload: any) => void
+    ) {
         super();
     }
 
@@ -18,9 +20,11 @@ export class InfoDispatchState extends State {
         this.logger.context('enter').info(`Entering info dispatch state`);
         const gridComponent = ecManager.getComponent(entity, GridComponent);
 
-        this.sessionNetworking.broadcastMessage('GameInfo', {
+        this.broadcastMessage(NormalRankGameEvent.GAME_INFORMATION, {
             duration: 15,
-            grid: gridComponent.grid
+            grid: gridComponent.grid,
+            valid_words: gridComponent.valid_words,
+            stats: gridComponent.stats
         });
     }
 

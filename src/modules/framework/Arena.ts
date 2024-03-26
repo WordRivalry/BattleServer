@@ -1,22 +1,12 @@
 import {IdentityComponent} from "../ecs/components/player/IdentityComponent";
-import {PlayerConnectionComponent} from "../ecs/components/player/PlayerConnectionComponent";
 import {GridPoolSystem} from "../game/systems/GridPoolSystem";
-import {GameMode, ModeType} from "../server_networking/validation/messageType";
-import {ScoreComponent} from "../game/components/ScoreComponent";
 import {GameEngine} from "../ecs/GameEngine";
-import {GlobalComponent} from "../ecs/components/GlobalComponent";
-import {GridPoolComponent} from "../game/components/game/GridPoolComponent";
-import {GridComponent} from "../game/components/game/GridComponent";
 import {TypedEventEmitter} from "../ecs/TypedEventEmitter";
 import {StateMachineSystem} from "../ecs/systems/fsm/StateMachineSystem";
 import {StateMachineComponent} from "../ecs/components/StateMachine/StateMachineComponent";
-import {ControlledByComponent} from "../ecs/components/pawn/ControlledByComponent";
-import {PlayerMetadata} from "./GameSessionManager";
 import {PlayerActionSystem} from "../ecs/systems/player/PlayerActionSystem";
 import {ComponentType} from "../ecs/components/ComponentManager";
 import {Component} from "../ecs/components/Component";
-import {SubmitWordCommandSystem} from "../game/systems/SubmitWordCommandSystem";
-
 export enum ArenaEvent {
     GRID_POOL_REFILLED = 'GRID_POOL_REFILLED',
 }
@@ -31,8 +21,12 @@ export class Arena {
 
         // Listen for gridPoolRefilled event to start the game
         this.gameEngine.eventSystem.subscribeGeneric(ArenaEvent.GRID_POOL_REFILLED, () => {
-           this.gameEngine.start();
+            this.gameEngine.start();
         });
+    }
+
+    public cleanup(gameEntity: number) {
+        this.gameEngine.ecManager.destroyEntity(gameEntity);
     }
 
     get eventSystem(): TypedEventEmitter {
@@ -51,15 +45,6 @@ export class Arena {
         this.gameEngine.ecManager.setParent(playerEntity, gameEntity);
     }
 
-    private initializeUpdatePipeline(): void {
-
-        this.gameEngine.systemManager.registerSystem(new SubmitWordCommandSystem());
-                                                                                // Main Pipeline
-        this.gameEngine.systemManager.registerSystem(new PlayerActionSystem()); // Player input      <-
-        this.gameEngine.systemManager.registerSystem(new StateMachineSystem()); // State machine     <-
-        this.gameEngine.systemManager.registerSystem(new GridPoolSystem());     // Grid pool         <-
-    }
-
     public stop(): void {
         this.gameEngine.stop();
     }
@@ -74,5 +59,12 @@ export class Arena {
             .withComponentCondition(IdentityComponent, (identityComponent) => identityComponent.identity === name)
             .withParent(gameEntity)
             .getOne();
+    }
+
+    private initializeUpdatePipeline(): void {
+        // Main Pipeline
+        this.gameEngine.systemManager.registerSystem(new PlayerActionSystem()); // Player input      <-
+        this.gameEngine.systemManager.registerSystem(new StateMachineSystem()); // State machine     <-
+        this.gameEngine.systemManager.registerSystem(new GridPoolSystem());     // Grid pool         <-
     }
 }

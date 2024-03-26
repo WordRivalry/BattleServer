@@ -1,10 +1,10 @@
 // HttpRequestHandler.ts
-import {PlayerMetadata} from "../oldButNew/GameSessionManager";
+import {GameSessionManager, PlayerMetadata} from "../framework/GameSessionManager";
 import {GameMode, ModeType} from "./validation/messageType";
-import {GameSessionManager} from "../oldButNew/GameSessionManager";
 
 export class HttpRequestHandler {
-    constructor(private sessionManager: GameSessionManager) {}
+    constructor(private sessionManager: GameSessionManager) {
+    }
 
     public handleRequestAlloc(playersMetadata: PlayerMetadata[], gameMode: string, modeType: string): string {
         const gameModeEnum = this.toGameMode(gameMode);

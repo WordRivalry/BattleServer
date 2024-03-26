@@ -8,7 +8,8 @@ export class PipelineManager {
     private pipeline: PipelineElement[] = [];
     private inSubPipeline: boolean = false;
 
-    constructor() {}
+    constructor() {
+    }
 
     addSystem(system: System): void {
         this.pipeline.push(system);
@@ -29,6 +30,7 @@ export class PipelineManager {
         this.pipeline.push("SUB_PIPELINE_END");
         this.inSubPipeline = false;
     }
+
     update(deltaTime: number, ecManager: ECManager, eventSystem: TypedEventEmitter): void {
         let inSubPipeline = false;
         let skipSubPipeline = false;

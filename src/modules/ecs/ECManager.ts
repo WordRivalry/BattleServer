@@ -4,7 +4,8 @@ import {ComponentManager, ComponentType} from "./components/ComponentManager";
 import {Component} from "./components/Component";
 
 export class ECManager {
-    constructor(private entityManager: EntityManager, private componentManager: ComponentManager) {}
+    constructor(private entityManager: EntityManager, private componentManager: ComponentManager) {
+    }
 
     destroyEntity(entityId: number): void {
         this.entityManager.destroyEntity(entityId);

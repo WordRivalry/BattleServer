@@ -1,6 +1,6 @@
 // LoggerFactory.js
 import winston from 'winston';
-import { LoggingWinston } from '@google-cloud/logging-winston';
+import {LoggingWinston} from '@google-cloud/logging-winston';
 import config from '../../../config'; // Adjust the import path as needed
 
 class LoggerFactory {
@@ -28,16 +28,16 @@ class LoggerFactory {
         const format = config.nodeEnv === 'development'
             ? winston.format.combine(
                 winston.format.colorize(),
-                winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
-                winston.format.printf(({ timestamp, level, message, ...metadata }) => {
+                winston.format.timestamp({format: 'YYYY-MM-DD HH:mm:ss'}),
+                winston.format.printf(({timestamp, level, message, ...metadata}) => {
                     const messageString = typeof message === 'object' ? JSON.stringify(message) : message;
                     const metadataString = Object.keys(metadata).length ? ` ${JSON.stringify(metadata)}` : '';
                     return `${timestamp} [${level}]: ${messageString}${metadataString}`;
                 })
             )
             : winston.format.combine(
-                winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
-                winston.format.errors({ stack: true }),
+                winston.format.timestamp({format: 'YYYY-MM-DD HH:mm:ss'}),
+                winston.format.errors({stack: true}),
                 winston.format.json()
             );
 

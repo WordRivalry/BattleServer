@@ -45,7 +45,7 @@ export class GameEngine {
     }
 
     private engineLoop(): void {
-        const tickRate = 1000; // ms
+        const tickRate = 50; // ms
         const update = () => {
             if (!this.running) return;
             const deltaTime = this.engineClock.update();
